@@ -20,8 +20,12 @@ class Server
 		Server(const Server &other);
 		Server &operator=(const Server &other);
 
+		// Create, bind and listen on the server's TCP socket.
+		void initSocket();
+
 		int         _port;
 		std::string _password;
+		int         _serverFd;
 };
 
 #endif
