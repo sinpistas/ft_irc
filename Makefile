@@ -31,19 +31,7 @@ OBJDIR		= obj
 ##### Sources ################################
 
 SRC			=	main.cpp \
-				#Server.cpp \
-				Client.cpp \
-				Channel.cpp \
-				CommandHandler.cpp \
-				commands/PASS.cpp \
-				commands/NICK.cpp \
-				commands/USER.cpp \
-				commands/JOIN.cpp \
-				commands/PRIVMSG.cpp \
-				commands/KICK.cpp \
-				commands/INVITE.cpp \
-				commands/TOPIC.cpp \
-				commands/MODE.cpp
+				Server.cpp
 
 SRCS		= $(addprefix $(SRCDIR)/,$(SRC))
 OBJ			= $(addprefix $(OBJDIR)/,$(SRC:.cpp=.o))
