@@ -2,6 +2,8 @@
 #define SERVER_HPP
 
 #include <string>
+#include <vector>
+#include <poll.h>
 
 // Store the configuration and expose the server lifecycle entry point.
 class Server
@@ -22,10 +24,14 @@ class Server
 
 		// Create, bind and listen on the server's TCP socket.
 		void initSocket();
+		// Watch the server socket with poll() and report incoming activity.
+		void pollLoop();
 
-		int         _port;
-		std::string _password;
-		int         _serverFd;
+		int                       _port;
+		std::string               _password;
+		int                       _serverFd;
+		// File descriptors monitored by the poll() event loop.
+		std::vector<struct pollfd> _pollFds;
 };
 
 #endif

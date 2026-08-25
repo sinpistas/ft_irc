@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <poll.h>
 
 Server::Server(int port, const std::string &password)
 	: _port(port), _password(password), _serverFd(-1)
@@ -30,7 +31,7 @@ Server::~Server()
 */
 void Server::initSocket()
 {
-	// Create an IPv4 TCP socket for incoming client connections.
+	// 1-Create an IPv4 TCP socket for incoming client connections.
 	_serverFd = socket(AF_INET, SOCK_STREAM, 0);
 	if (_serverFd < 0)
 		throw std::runtime_error(std::string("socket: ") + std::strerror(errno));
@@ -44,7 +45,7 @@ void Server::initSocket()
 	if (fcntl(_serverFd, F_SETFL, O_NONBLOCK) < 0)
 		throw std::runtime_error(std::string("fcntl: ") + std::strerror(errno));
 
-	// Configure the server address to listen on every local network interface.
+	// 2-Configure the server address to listen on every local network interface.
 	// htons and htonl convert numbers from processor’s memory format (Host 
 	// Byte Order) to the standard network format (Network Byte Order).
 	struct sockaddr_in addr;
@@ -53,22 +54,48 @@ void Server::initSocket()
 	addr.sin_port = htons(static_cast<unsigned short>(_port));
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-
+	// 3-The IP address is assigned to the socket (FD)
 	if (bind(_serverFd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0)
 		throw std::runtime_error(std::string("bind: ") + std::strerror(errno));
 
-	// Start listening and allow the system to queue pending connections.
+	// 4-Start listening and allow the system to queue pending connections.
 	if (listen(_serverFd, SOMAXCONN) < 0)
 		throw std::runtime_error(std::string("listen: ") + std::strerror(errno));
 
 	std::cout << "Server listening on port " << _port << std::endl;
 }
 
+void Server::pollLoop()
+{
+	// Register the listening socket and ask poll() to report incoming data.
+	struct pollfd serverPoll;
+	serverPoll.fd = _serverFd;
+	serverPoll.events = POLLIN;
+	serverPoll.revents = 0;
+	_pollFds.push_back(serverPoll);
+
+	std::cout << "Waiting for activity on the server socket..." << std::endl;
+
+	while (true)
+	{
+		// Wait indefinitely until one of the monitored descriptors has an event.
+		int ready = poll(&_pollFds[0], _pollFds.size(), -1);
+		if (ready < 0)
+		{
+			// A signal may interrupt poll(); retry instead of treating it as a fatal error.
+			if (errno == EINTR)
+				continue;
+			throw std::runtime_error(std::string("poll: ") + std::strerror(errno));
+		}
+
+		// POLLIN means that the listening socket has a connection ready to accept.
+		if (_pollFds[0].revents & POLLIN)
+			std::cout << "Incoming connection pending on the server socket" << std::endl;
+	}
+}
+
 void Server::run()
 {
 	initSocket();
-
-	// Keep the process alive until the poll() event loop is implemented.
-	while (true)
-		pause();
+	pollLoop();
 }
