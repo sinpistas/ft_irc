@@ -1,0 +1,47 @@
+#ifndef CHANNEL_HPP
+#define CHANNEL_HPP
+
+#include <iostream>
+#include <string>
+#include <cstddef>
+#include <set>
+#include <map>
+
+class Channel
+{
+	public:
+
+		Channel();
+		Channel(std::string name);
+		~Channel();
+
+		explicit Channel(const std::string &name);
+
+		const std::string &getName() const;
+
+		void setTopic(const std::string &topic);
+		const std::string &getTopic() const;
+
+		void addMode(char mode);
+		void removeMode(char mode);
+		bool hasMode(char mode) const;
+		const std::string &getModes() const;
+
+		void addMember(int fd);
+		void removeMember(int fd);
+		bool hasMember(int fd) const;
+
+		void addOperator(int fd);
+		void removeOperator(int fd);
+		bool isOperator(int fd) const;
+
+	private:
+
+		std::string _channelName;
+		std::string _topic;
+		std::string _modes;
+		std::set<int> _members;
+		std::set<int> _operators;
+};
+
+#endif

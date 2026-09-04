@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+         #
+#    By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/08/22 13:50:13 by apestana          #+#    #+#              #
-#    Updated: 2026/08/25 23:18:23 by apestana         ###   ########.fr        #
+#    Updated: 2026/09/04 19:19:28 by vbullock         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -31,7 +31,10 @@ OBJDIR		= obj
 ##### Sources ################################
 
 SRC			=	main.cpp \
-				Server.cpp
+				Server.cpp \
+				Client.cpp \
+				IrcMessage.cpp \
+				Channel.cpp
 
 SRCS		= $(addprefix $(SRCDIR)/,$(SRC))
 OBJ			= $(addprefix $(OBJDIR)/,$(SRC:.cpp=.o))
