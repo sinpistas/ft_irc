@@ -65,6 +65,7 @@ class Server
 		// New stuff
 		void processMessage(Client &client, const IrcMessage &msg);
 		
+		void handlePass(Client &client, const IrcMessage &msg);
 		void handleNick(Client &client, const IrcMessage &msg);
 		void handleUser(Client &client, const IrcMessage &msg);
 		void handleJoin(Client &client, const IrcMessage &msg);

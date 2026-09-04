@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Server.cpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/04 19:19:03 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/05 01:25:49 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -23,6 +23,8 @@
 #include <unistd.h>
 #include <poll.h>
 #include <csignal>
+
+static const char *SERVER_NAME = "irc.local";
 
 Server::Server(int port, const std::string &password)
 	: _port(port), _password(password), _serverFd(-1)
@@ -249,7 +251,9 @@ void Server::handleTopic(Client &client, const IrcMessage &msg)
 
 void Server::processMessage(Client &client, const IrcMessage &msg)
 {
-	if (msg.command == "NICK")
+	if (msg.command == "PASS")
+		handlePass(client, msg);
+	else if (msg.command == "NICK")
 		handleNick(client, msg);
 	else if (msg.command == "USER")
 		handleUser(client, msg);
@@ -481,6 +485,41 @@ void Server::run()
 	ignoreSigpipe();
 	initSocket();
 	pollLoop();
+}
+
+void Server::handlePass(Client &client, const IrcMessage &msg)
+{
+	// Unregistered clients do not yet have a nickname, so IRC errors use '*'.
+	std::string target;
+
+	if (client.getNickname().empty())
+		target = "*";
+	else
+		target = client.getNickname();
+
+	if (client.isRegistered())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 462 " + target + " :You may not reregister");
+		return;
+	}
+
+	if (msg.params.size() != 1)
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 461 " + target + " PASS :Not enough parameters");
+		return;
+	}
+
+	if (msg.params[0] != _password)
+	{
+		client.setPasswordAccepted(false);
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 464 " + target + " :Password incorrect");
+		return;
+	}
+
+	client.setPasswordAccepted(true);
 }
 
 void Server::handleNick(Client &client, const IrcMessage &msg)
