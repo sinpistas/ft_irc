@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/05 01:25:49 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/05 01:45:03 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -251,6 +251,21 @@ void Server::handleTopic(Client &client, const IrcMessage &msg)
 
 void Server::processMessage(Client &client, const IrcMessage &msg)
 {
+	// Registration commands are the only commands accepted before welcome (001).
+	if (!client.isRegistered() && msg.command != "PASS" && msg.command != "NICK"
+		&& msg.command != "USER")
+	{
+		std::string target;
+
+		if (client.getNickname().empty())
+			target = "*";
+		else 
+			target = client.getNickname();
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 451 " + target + " :You have not registered");
+		return;
+	}
+
 	if (msg.command == "PASS")
 		handlePass(client, msg);
 	else if (msg.command == "NICK")
