@@ -13,7 +13,7 @@
 #include "Client.hpp"
 
 Client::Client(int fd)
-	: _fd(fd), _isAuthenticated(false)
+	: _fd(fd), _passwordAccepted(false), _isRegistered(false)
 {
 }
 
@@ -95,9 +95,27 @@ const std::string &Client::getRealname() const
 {
 	return _realname;
 }
-bool Client::isAuthenticated() const
+void Client::setPasswordAccepted(bool accepted)
 {
-	return _isAuthenticated;
+	_passwordAccepted = accepted;
+}
+
+bool Client::hasAcceptedPassword() const
+{
+	return _passwordAccepted;
+}
+
+bool Client::tryRegister()
+{
+	if (_isRegistered || !_passwordAccepted || _nickname.empty() || _username.empty())
+		return false;
+	_isRegistered = true;
+	return true;
+}
+
+bool Client::isRegistered() const
+{
+	return _isRegistered;
 }
 
 

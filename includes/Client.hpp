@@ -57,7 +57,13 @@ class Client
 		const std::string &getUsername() const;
 		void setRealname(const std::string &name);
 		const std::string &getRealname() const;
-		bool isAuthenticated() const;  // Returns true when NICK + USER both set
+
+		// PASS acceptance and completed registration are separate states.
+		void setPasswordAccepted(bool accepted);
+		bool hasAcceptedPassword() const;
+		// Mark the client registered only after PASS, NICK and USER succeeded.
+		bool tryRegister();
+		bool isRegistered() const;
 		
 		// Channel Management (for JOIN/KICK)
 		void joinChannel(const std::string &channel);
@@ -89,7 +95,8 @@ class Client
 		std::string  _realname;           // For USER command
 		std::set<std::string> _channels;  // For JOIN/KICK commands
 		std::string  _modes;              // For MODE command (e.g., "io" for invisible+operator)
-		bool         _isAuthenticated;    // Registration complete (NICK + USER received)
+		bool         _passwordAccepted;
+		bool         _isRegistered;
 		std::map<std::string, std::string> _channelModes;  // Per-channel modes (e.g., channel -> operator status)
 };
 
