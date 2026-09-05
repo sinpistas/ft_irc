@@ -23,8 +23,43 @@
 #include <unistd.h>
 #include <poll.h>
 #include <csignal>
+#include <cctype>
 
 static const char *SERVER_NAME = "irc.local";
+
+static bool isNicknameSpecial(char character)
+{
+	return character == '[' || character == ']' || character == '\\'
+		|| character == '^' || character == '_' || character == '`'
+		|| character == '{' || character == '|';
+}
+
+static char foldIrcNickname(char character)
+{
+	if (character >= 'A' && character <= 'Z')
+		return static_cast<char>(character - 'A' + 'a');
+	if (character == '[')
+		return '{';
+	if (character == ']')
+		return '}';
+	if (character == '\\')
+		return '|';
+	if (character == '~')
+		return '^';
+	return character;
+}
+
+static bool areSameNicknames(const std::string &left, const std::string &right)
+{
+	if (left.size() != right.size())
+		return false;
+	for (std::string::size_type i = 0; i < left.size(); ++i)
+	{
+		if (foldIrcNickname(left[i]) != foldIrcNickname(right[i]))
+			return false;
+	}
+	return true;
+}
 
 Server::Server(int port, const std::string &password)
 	: _port(port), _password(password), _serverFd(-1)
@@ -286,6 +321,33 @@ void Server::processMessage(Client &client, const IrcMessage &msg)
 		handleTopic(client, msg);
 }
 
+bool Server::isValidNickname(const std::string &nickname) const
+{
+	if (nickname.empty())
+		return false;
+
+	for (std::string::size_type i = 0; i < nickname.size(); ++i)
+	{
+		unsigned char character = static_cast<unsigned char>(nickname[i]);
+		if (std::isalpha(character) || isNicknameSpecial(nickname[i]))
+			continue;
+		if (i > 0 && (std::isdigit(character) || nickname[i] == '-'))
+			continue;
+		return false;
+	}
+	return true;
+}
+
+bool Server::isNicknameInUse(const std::string &nickname, int ignoredFd) const
+{
+	for (std::map<int, Client>::const_iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		if (it->first != ignoredFd && areSameNicknames(it->second.getNickname(), nickname))
+			return true;
+	}
+	return false;
+}
+
 void Server::extractCompleteLines(int fd)
 {
 	std::map<int, Client>::iterator it = _clients.find(fd);
@@ -539,9 +601,39 @@ void Server::handlePass(Client &client, const IrcMessage &msg)
 
 void Server::handleNick(Client &client, const IrcMessage &msg)
 {
-	client.setNickname("newnickname");
-	std::cout << msg.command << std::endl;
-	std::cout << "Changing user nickname." << std::endl;
+	std::string target = client.getNickname().empty() ? "*" : client.getNickname();
+
+	if (!client.hasAcceptedPassword())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 464 " + target + " :Password incorrect");
+		return;
+	}
+
+	if (msg.params.empty())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 431 " + target + " :No nickname given");
+		return;
+	}
+
+	const std::string &nickname = msg.params[0];
+	if (msg.params.size() != 1 || !isValidNickname(nickname))
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 432 " + target + " " + nickname + " :Erroneous nickname");
+		return;
+	}
+
+	if (isNicknameInUse(nickname, client.getFd()))
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 433 " + target + " " + nickname + " :Nickname is already in use");
+		return;
+	}
+
+	client.setNickname(nickname);
+	client.tryRegister();
 }
 void Server::handleUser(Client &client, const IrcMessage &msg)
 {

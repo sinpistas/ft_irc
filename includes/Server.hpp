@@ -64,6 +64,8 @@ class Server
 		
 		// New stuff
 		void processMessage(Client &client, const IrcMessage &msg);
+		bool isValidNickname(const std::string &nickname) const;
+		bool isNicknameInUse(const std::string &nickname, int ignoredFd) const;
 		
 		void handlePass(Client &client, const IrcMessage &msg);
 		void handleNick(Client &client, const IrcMessage &msg);
