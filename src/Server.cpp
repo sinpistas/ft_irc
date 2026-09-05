@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/05 01:45:03 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/05 02:31:44 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -635,12 +635,47 @@ void Server::handleNick(Client &client, const IrcMessage &msg)
 	client.setNickname(nickname);
 	client.tryRegister();
 }
+
+//USER <username> <mode> <unused> :<realname>
 void Server::handleUser(Client &client, const IrcMessage &msg)
 {
-	client.setUsername("newusername");
-	client.setRealname("newrealname");
-	std::cout << msg.command << std::endl;
-	std::cout << "Changing username/real name." << std::endl;
+	std::string target;
+
+	if (client.getNickname().empty())
+		target = "*";
+	else
+		target = client.getNickname();
+
+	if (!client.hasAcceptedPassword())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 464 " + target + " :Password incorrect");
+		return;
+	}
+
+	if (client.isRegistered())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 462 " + target + " :You may not reregister");
+		return;
+	}
+
+	if (msg.params.size() != 4)
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 461 " + target + " USER :Not enough parameters");
+		return;
+	}
+
+	client.setUsername(msg.params[0]);
+	client.setRealname(msg.params[3]);
+
+	// NICK and USER may arrive in either order after PASS.
+	if (client.tryRegister())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 001 "
+			+ client.getNickname() + " :Welcome to the ft_irc server");
+	}
 }
 void Server::handleJoin(Client &client, const IrcMessage &msg)
 {
