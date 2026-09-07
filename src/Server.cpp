@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Server.cpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
+/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/05 02:31:44 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/07 17:15:44 by vbullock         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -300,25 +300,26 @@ void Server::processMessage(Client &client, const IrcMessage &msg)
 			+ " 451 " + target + " :You have not registered");
 		return;
 	}
+		if (msg.command == "PASS")
+			handlePass(client, msg);
+		else if (msg.command == "NICK")
+			handleNick(client, msg);
+		else if (msg.command == "USER")
+			handleUser(client, msg);
+		else if (msg.command == "JOIN")
+			handleJoin(client, msg);
+		else if (msg.command == "PRIVMSG")
+			handlePrivmsg(client, msg);
+		else if (msg.command == "QUIT")
+			handleQuit(client, msg);
+		else if (msg.command == "KICK")
+			handleKick(client, msg);
+		else if (msg.command == "MODE")
+			handleMode(client, msg);
+		else if (msg.command == "TOPIC")
+			handleTopic(client, msg);
 
-	if (msg.command == "PASS")
-		handlePass(client, msg);
-	else if (msg.command == "NICK")
-		handleNick(client, msg);
-	else if (msg.command == "USER")
-		handleUser(client, msg);
-	else if (msg.command == "JOIN")
-		handleJoin(client, msg);
-	else if (msg.command == "PRIVMSG")
-		handlePrivmsg(client, msg);
-	else if (msg.command == "QUIT")
-		handleQuit(client, msg);
-	else if (msg.command == "KICK")
-		handleKick(client, msg);
-	else if (msg.command == "MODE")
-		handleMode(client, msg);
-	else if (msg.command == "TOPIC")
-		handleTopic(client, msg);
+
 }
 
 bool Server::isValidNickname(const std::string &nickname) const
@@ -633,7 +634,12 @@ void Server::handleNick(Client &client, const IrcMessage &msg)
 	}
 
 	client.setNickname(nickname);
-	client.tryRegister();
+	// NICK and USER may arrive in either order after PASS.
+	if (client.tryRegister())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 001 "
+			+ client.getNickname() + " :Welcome to the ft_irc server");
+	}
 }
 
 //USER <username> <mode> <unused> :<realname>
