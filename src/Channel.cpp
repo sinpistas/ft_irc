@@ -10,7 +10,12 @@
 // · o: Give/take channel operator privilege
 // · l: Set/remove the user limit to channel
 
-Channel::Channel(std::string name)
+Channel::Channel()
+	: _channelName("Unnamed")
+{
+}
+
+Channel::Channel(const std::string name)
 	: _channelName(name)
 {
 }

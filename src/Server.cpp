@@ -6,7 +6,7 @@
 /*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/07 17:15:44 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/09 15:48:25 by vbullock         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -64,7 +64,7 @@ static bool areSameNicknames(const std::string &left, const std::string &right)
 Server::Server(int port, const std::string &password)
 	: _port(port), _password(password), _serverFd(-1)
 {
-	// Store the configuration needed by the server during its lifetime.
+    _channels.insert(std::make_pair("#general", Channel("#general")));
 }
 
 Server::~Server()
@@ -685,9 +685,30 @@ void Server::handleUser(Client &client, const IrcMessage &msg)
 }
 void Server::handleJoin(Client &client, const IrcMessage &msg)
 {
-	client.joinChannel("Newchannel");
-	std::cout << msg.command << std::endl;
-	std::cout << "Joining server." << std::endl;
+    if (msg.params.size() != 1)
+    {
+        queueMessage(client.getFd(), "Incorrect number of parameters.");
+        return;
+    }
+
+    const std::string &channelName = msg.params[0];
+    std::map<std::string, Channel>::iterator channel =
+        _channels.find(channelName);
+
+    if (channel == _channels.end())
+    {
+        queueMessage(client.getFd(),
+            std::string("No channel found with name: ") + channelName);
+        return;
+    }
+
+    client.joinChannel(channelName);
+    channel->second.addMember(client.getFd());
+
+    std::cout << client.getNickname() << " joined "
+              << channelName << " channel." << std::endl;
+	queueMessage(client.getFd(),
+            std::string("You have joined channel: ") + channelName);
 }
 void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 {

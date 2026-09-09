@@ -12,10 +12,8 @@ class Channel
 	public:
 
 		Channel();
-		Channel(std::string name);
+		Channel(const std::string name);
 		~Channel();
-
-		explicit Channel(const std::string &name);
 
 		const std::string &getName() const;
 
