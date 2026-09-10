@@ -29,6 +29,19 @@
 
 static const char *SERVER_NAME = "irc.local";
 
+static bool isValidChannelName(const std::string &name)
+{
+	if (name.size() < 2 || name.size() > 50 || (name[0] != '#' && name[0] != '&'))
+		return false;
+	for (std::string::size_type i = 0; i < name.size(); ++i)
+	{
+		if (name[i] == '\0' || name[i] == '\a' || name[i] == '\r'
+			|| name[i] == '\n' || name[i] == ' ' || name[i] == ',' || name[i] == ':')
+			return false;
+	}
+	return true;
+}
+
 static bool isNicknameSpecial(char character)
 {
 	return character == '[' || character == ']' || character == '\\'
@@ -51,7 +64,6 @@ static bool areSameNicknames(const std::string &left, const std::string &right)
 Server::Server(int port, const std::string &password)
 	: _port(port), _password(password), _serverFd(-1)
 {
-    _channels.insert(std::make_pair("#general", Channel("#general")));
 }
 
 Server::~Server()
@@ -428,8 +440,14 @@ bool Server::sendToClient(int fd)
 void Server::removeClient(int fd)
 {
 	// Remove channel membership before close() allows this fd to be reused.
-	for (std::map<std::string, Channel>::iterator it = _channels.begin(); it != _channels.end(); ++it)
+	for (std::map<std::string, Channel>::iterator it = _channels.begin(); it != _channels.end(); )
+	{
 		it->second.removeMember(fd);
+		if (it->second.isEmpty())
+			_channels.erase(it++);
+		else
+			++it;
+	}
 
 	for (std::vector<struct pollfd>::iterator it = _pollFds.begin(); it != _pollFds.end(); ++it)
 	{
@@ -686,18 +704,28 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
     }
 
     const std::string channelName = normalizeIrcName(msg.params[0]);
-    std::map<std::string, Channel>::iterator channel =
-        _channels.find(channelName);
-
-    if (channel == _channels.end())
+    if (!isValidChannelName(channelName))
     {
-        queueMessage(client.getFd(),
-            std::string("No channel found with name: ") + channelName);
+        // Use a safe placeholder: invalid input may contain protocol delimiters.
+        queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+            + " 476 " + client.getNickname() + " * :Bad Channel Mask");
         return;
     }
 
+    std::map<std::string, Channel>::iterator channel =
+        _channels.find(channelName);
+    const bool created = channel == _channels.end();
+    if (created)
+    {
+        channel = _channels.insert(std::make_pair(channelName, Channel(channelName))).first;
+    }
+    else if (channel->second.hasMember(client.getFd()))
+        return;
+
     client.joinChannel(channelName);
     channel->second.addMember(client.getFd());
+    if (created)
+        channel->second.addOperator(client.getFd());
 
     std::cout << client.getNickname() << " joined "
               << channelName << " channel." << std::endl;

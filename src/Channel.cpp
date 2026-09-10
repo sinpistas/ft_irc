@@ -64,8 +64,8 @@ const std::string &Channel::getModes() const
 
 void Channel::addOperator(int fd)
 {
-	std::cout << "Operator added." << fd << std::endl;
-
+	if (hasMember(fd))
+		this->_operators.insert(fd);
 }
 void Channel::removeOperator(int fd)
 {
@@ -88,6 +88,10 @@ void Channel::removeMember(int fd)
 	this->_members.erase(fd);
 	// Channel privileges must not survive the member's departure.
 	this->_operators.erase(fd);
+}
+bool Channel::isEmpty() const
+{
+	return this->_members.empty();
 }
 bool Channel::hasMember(int fd) const
 {

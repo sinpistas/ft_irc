@@ -29,6 +29,7 @@ class Channel
 		// Remove membership and any operator privileges for this descriptor.
 		void removeMember(int fd);
 		bool hasMember(int fd) const;
+		bool isEmpty() const;
 
 		void addOperator(int fd);
 		void removeOperator(int fd);
