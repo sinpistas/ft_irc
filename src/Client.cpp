@@ -3,14 +3,16 @@
 /*                                                        :::      ::::::::   */
 /*   Client.cpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/04 19:15:55 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:35:21 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Client.hpp"
+
+static const size_t MAX_IRC_LINE_SIZE = 512;
 
 Client::Client(int fd)
 	: _fd(fd), _passwordAccepted(false), _isRegistered(false)
@@ -26,10 +28,33 @@ int Client::getFd() const
 	return _fd;
 }
 
-void Client::appendToBuffer(const char *data, size_t len)
+bool Client::appendToBuffer(const char *data, size_t len)
 {
-	// A single recv() may contain a partial message or several messages.
+	// Continue counting the unfinished line from the previous receive.
+	std::string::size_type lastEnd = _receiveBuffer.rfind("\r\n");
+	size_t lineSize = lastEnd == std::string::npos
+		? _receiveBuffer.size() : _receiveBuffer.size() - lastEnd - 2;
+	bool previousWasCR = !_receiveBuffer.empty()
+		&& _receiveBuffer[_receiveBuffer.size() - 1] == '\r';
+
+	// Validate before allocating. Each complete line gets its own limit,
+	// even when several commands arrive in the same recv().
+	for (size_t i = 0; i < len; ++i)
+	{
+		++lineSize;
+		if (previousWasCR && data[i] == '\n')
+			lineSize = 0;
+		else if (lineSize > MAX_IRC_LINE_SIZE - 2)
+		{
+			// At byte 511 only CR is allowed: LF may arrive in the next recv().
+			if (lineSize != MAX_IRC_LINE_SIZE - 1 || data[i] != '\r')
+				return false;
+		}
+		previousWasCR = data[i] == '\r';
+	}
+
 	_receiveBuffer.append(data, len);
+	return true;
 }
 
 const std::string &Client::getBuffer() const

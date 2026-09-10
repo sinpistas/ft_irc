@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Client.hpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 16:41:24 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:35:20 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -29,8 +29,9 @@ class Client
 		// Return the descriptor associated with this connection.
 		int getFd() const;
 
-		// Preserve received data until a complete IRC message can be processed.
-		void appendToBuffer(const char *data, size_t len);
+		// Preserve received data, allowing at most 512 bytes per line including
+		// CRLF. Return false without appending if any line exceeds the limit.
+		bool appendToBuffer(const char *data, size_t len);
 		// Expose the accumulated data without copying it.
 		const std::string &getBuffer() const;
 

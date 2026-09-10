@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:30:51 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:35:23 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -192,8 +192,12 @@ bool Server::receiveFromClient(int fd)
 	if (bytes > 0)
 	{
 		std::map<int, Client>::iterator it = _clients.find(fd);
-		if (it != _clients.end())
-			it->second.appendToBuffer(buffer, static_cast<size_t>(bytes));
+		if (it != _clients.end()
+			&& !it->second.appendToBuffer(buffer, static_cast<size_t>(bytes)))
+		{
+			std::cerr << "IRC line too long from client fd " << fd << std::endl;
+			return false;
+		}
 
 		std::cout << "Received " << bytes << " bytes from client fd " << fd
 			<< ": " << std::string(buffer, static_cast<size_t>(bytes)) << std::endl;
