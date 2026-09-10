@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Server.cpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 17:13:40 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:30:51 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -186,40 +186,27 @@ void Server::acceptNewClients()
 bool Server::receiveFromClient(int fd)
 {
 	char buffer[4096];
+	// One read per POLLIN event; poll() will report any remaining input.
+	ssize_t bytes = recv(fd, buffer, sizeof(buffer), 0);
 
-	while (true)
+	if (bytes > 0)
 	{
-		ssize_t bytes = recv(fd, buffer, sizeof(buffer), 0);
+		std::map<int, Client>::iterator it = _clients.find(fd);
+		if (it != _clients.end())
+			it->second.appendToBuffer(buffer, static_cast<size_t>(bytes));
 
-		if (bytes > 0)
-		{
-			std::map<int, Client>::iterator it = _clients.find(fd);
-			if (it != _clients.end())
-				it->second.appendToBuffer(buffer, static_cast<size_t>(bytes));
-
-			std::cout << "Received " << bytes << " bytes from client fd " << fd
-				<< ": " << std::string(buffer, static_cast<size_t>(bytes)) << std::endl;
-			// Non-blocking: keep draining in case more data is already queued.
-			continue;
-		}
-
-		if (bytes == 0)
-		{
-			// Orderly shutdown from the client's side.
-			std::cout << "Client fd " << fd << " closed the connection" << std::endl;
-			return false;
-		}
-
-		// bytes < 0
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
-			return true;
-		if (errno == EINTR)
-			continue;
-
-		// Any other error must not take the whole server down.
-		std::cerr << "recv: " << std::strerror(errno) << std::endl;
-		return false;
+		std::cout << "Received " << bytes << " bytes from client fd " << fd
+			<< ": " << std::string(buffer, static_cast<size_t>(bytes)) << std::endl;
+		return true;
 	}
+
+	// The subject forbids using errno after recv(): EOF or an error removes
+	// this client without retrying the operation or stopping the server.
+	if (bytes == 0)
+		std::cout << "Client fd " << fd << " closed the connection" << std::endl;
+	else
+		std::cerr << "recv failed for client fd " << fd << std::endl;
+	return false;
 }
 
 void handleChannelMode(Client &client, const IrcMessage &msg)
@@ -428,36 +415,19 @@ bool Server::sendToClient(int fd)
 	if (it == _clients.end())
 		return true;
 
-	while (it->second.hasPendingOutput())
+	if (it->second.hasPendingOutput())
 	{
+		// One write per POLLOUT event, even if only part of the buffer fits.
 		const std::string &buffer = it->second.getSendBuffer();
 		ssize_t sent = send(fd, buffer.data(), buffer.size(), 0);
 
-		if (sent > 0)
+		// Decide from the return value only, as required by the subject.
+		if (sent <= 0)
 		{
-			it->second.consumeSendBuffer(static_cast<size_t>(sent));
-			continue;
-		}
-
-		if (sent == 0)
-		{
-			// The buffer is non-empty (the while condition guarantees that),
-			// so a 0-byte write isn't a legitimate "try again" case; leaving
-			// it as one would keep POLLOUT set on a socket that never
-			// drains, spinning poll() forever. Treat it as a client error.
-			std::cerr << "send: unexpected 0-byte write to fd " << fd << std::endl;
+			std::cerr << "send failed for client fd " << fd << std::endl;
 			return false;
 		}
-
-		// sent < 0
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
-			break; // Kernel send buffer is full; the rest waits for the next POLLOUT.
-		if (errno == EINTR)
-			continue;
-
-		// Any other error must not take the whole server down.
-		std::cerr << "send: " << std::strerror(errno) << std::endl;
-		return false;
+		it->second.consumeSendBuffer(static_cast<size_t>(sent));
 	}
 
 	updateClientPollEvents(fd);
@@ -536,8 +506,8 @@ void Server::pollLoop()
 			// A peer can send its last bytes and close in the same instant, so
 			// the kernel may report POLLIN and POLLHUP/POLLERR together. Read
 			// first and always extract whatever complete lines that leaves in
-			// the buffer before honoring the hangup/error below; otherwise a
-			// message that arrived right before the close would be dropped.
+			// the buffer. Defer a hangup while input is readable so data larger
+			// than one receive buffer is processed across successive polls.
 			bool stillConnected = true;
 			if (revents & POLLIN)
 				stillConnected = receiveFromClient(fd);
@@ -549,7 +519,8 @@ void Server::pollLoop()
 			if (stillConnected && (revents & POLLOUT))
 				stillConnected = sendToClient(fd);
 
-			if (!stillConnected || (revents & (POLLHUP | POLLERR | POLLNVAL)))
+			if (!stillConnected || (revents & (POLLERR | POLLNVAL))
+				|| ((revents & POLLHUP) && !(revents & POLLIN)))
 				toRemove.push_back(fd);
 		}
 

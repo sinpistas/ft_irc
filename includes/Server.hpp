@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Server.hpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 16:52:37 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:30:41 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -46,14 +46,14 @@ class Server
 		void setNonBlocking(int fd);
 		// Accept every pending connection on the server socket.
 		void acceptNewClients();
-		// Read every pending byte from a client; false means it must be removed.
+		// Read once after POLLIN; EOF or an error means the client must be removed.
 		bool receiveFromClient(int fd);
 		// Pull every complete "\r\n"-terminated line out of a client's buffer.
 		void extractCompleteLines(int fd);
 		// Queue a line for a client, appending "\r\n" exactly once.
 		void queueMessage(int fd, const std::string &message);
-		// Flush as much of a client's pending output as the socket accepts
-		// right now; false means it must be removed.
+		// Write once after POLLOUT, preserving unsent bytes for the next event;
+		// false means the client must be removed.
 		bool sendToClient(int fd);
 		// Sync a client's pollfd events with whether it has pending output.
 		void updateClientPollEvents(int fd);
