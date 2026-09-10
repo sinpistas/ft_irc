@@ -85,6 +85,8 @@ void Channel::addMember(int fd)
 void Channel::removeMember(int fd)
 {
 	this->_members.erase(fd);
+	// Channel privileges must not survive the member's departure.
+	this->_operators.erase(fd);
 }
 bool Channel::hasMember(int fd) const
 {

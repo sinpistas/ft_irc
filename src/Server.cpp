@@ -441,6 +441,10 @@ bool Server::sendToClient(int fd)
 
 void Server::removeClient(int fd)
 {
+	// Remove channel membership before close() allows this fd to be reused.
+	for (std::map<std::string, Channel>::iterator it = _channels.begin(); it != _channels.end(); ++it)
+		it->second.removeMember(fd);
+
 	for (std::vector<struct pollfd>::iterator it = _pollFds.begin(); it != _pollFds.end(); ++it)
 	{
 		if (it->fd == fd)

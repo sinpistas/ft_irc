@@ -26,6 +26,7 @@ class Channel
 		const std::string &getModes() const;
 
 		void addMember(int fd);
+		// Remove membership and any operator privileges for this descriptor.
 		void removeMember(int fd);
 		bool hasMember(int fd) const;
 

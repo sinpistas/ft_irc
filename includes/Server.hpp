@@ -57,7 +57,7 @@ class Server
 		bool sendToClient(int fd);
 		// Sync a client's pollfd events with whether it has pending output.
 		void updateClientPollEvents(int fd);
-		// Close a client's fd and drop it from _pollFds and _clients.
+		// Remove channel membership, then close the fd and erase the client.
 		void removeClient(int fd);
 		// Watch every monitored descriptor with poll() and report activity.
 		void pollLoop();
