@@ -1,5 +1,6 @@
 
 #include "Channel.hpp"
+#include "IrcCaseMapping.hpp"
 
 // ∗ TOPIC - Change or view the channel topic
 // ∗ MODE - Change the channel’s mode:
@@ -16,7 +17,7 @@ Channel::Channel()
 }
 
 Channel::Channel(const std::string name)
-	: _channelName(name)
+	: _channelName(normalizeIrcName(name))
 {
 }
 

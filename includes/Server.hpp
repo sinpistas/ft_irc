@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:30:41 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:52:28 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -85,6 +85,7 @@ class Server
 		std::vector<struct pollfd> _pollFds;
 		// Connected clients, keyed by their fd.
 		std::map<int, Client>     _clients;
+		// Channel keys use normalizeIrcName() so all spellings share one entry.
 		std::map<std::string, Channel> _channels;
 };
 

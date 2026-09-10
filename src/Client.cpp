@@ -6,11 +6,12 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:35:21 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:52:18 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Client.hpp"
+#include "IrcCaseMapping.hpp"
 
 static const size_t MAX_IRC_LINE_SIZE = 512;
 
@@ -148,13 +149,14 @@ bool Client::isRegistered() const
 // Channel Management (for JOIN/KICK)
 void Client::joinChannel(const std::string &channel)
 {
-	_channels.insert(channel);
+	_channels.insert(normalizeIrcName(channel));
 }
 void Client::leaveChannel(const std::string &channel)
 {
-	if (_channels.find(channel) != _channels.end())
+	const std::string channelName = normalizeIrcName(channel);
+	if (_channels.find(channelName) != _channels.end())
 	{
-		_channels.erase(channel);
+		_channels.erase(channelName);
 	}
 	else
 		std::cout << "User was not found in channel " << channel << std::endl;
@@ -165,7 +167,7 @@ void Client::leaveChannel(const std::string &channel)
 
 bool Client::isInChannel(const std::string &channel) const
 {
-	if (_channels.find(channel) != _channels.end())
+	if (_channels.find(normalizeIrcName(channel)) != _channels.end())
 	{
 		return 1;
 	}

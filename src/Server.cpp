@@ -6,12 +6,13 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:46:58 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:52:11 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Server.hpp"
 #include "IrcMessage.hpp"
+#include "IrcCaseMapping.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <cstring>
@@ -35,28 +36,13 @@ static bool isNicknameSpecial(char character)
 		|| character == '{' || character == '}' || character == '|';
 }
 
-static char foldIrcNickname(char character)
-{
-	if (character >= 'A' && character <= 'Z')
-		return static_cast<char>(character - 'A' + 'a');
-	if (character == '[')
-		return '{';
-	if (character == ']')
-		return '}';
-	if (character == '\\')
-		return '|';
-	if (character == '~')
-		return '^';
-	return character;
-}
-
 static bool areSameNicknames(const std::string &left, const std::string &right)
 {
 	if (left.size() != right.size())
 		return false;
 	for (std::string::size_type i = 0; i < left.size(); ++i)
 	{
-		if (foldIrcNickname(left[i]) != foldIrcNickname(right[i]))
+		if (foldIrcCase(left[i]) != foldIrcCase(right[i]))
 			return false;
 	}
 	return true;
@@ -247,7 +233,7 @@ void Server::handleTopic(Client &client, const IrcMessage &msg)
         return;
 
     std::map<std::string, Channel>::iterator it =
-        _channels.find(msg.params[0]);
+        _channels.find(normalizeIrcName(msg.params[0]));
 
     if (it == _channels.end())
         return;
@@ -699,7 +685,7 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
         return;
     }
 
-    const std::string &channelName = msg.params[0];
+    const std::string channelName = normalizeIrcName(msg.params[0]);
     std::map<std::string, Channel>::iterator channel =
         _channels.find(channelName);
 
