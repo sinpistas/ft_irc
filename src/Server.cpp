@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:35:23 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:40:51 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -24,6 +24,7 @@
 #include <poll.h>
 #include <csignal>
 #include <cctype>
+#include <set>
 
 static const char *SERVER_NAME = "irc.local";
 
@@ -605,6 +606,34 @@ void Server::handleNick(Client &client, const IrcMessage &msg)
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 			+ " 433 " + target + " " + nickname + " :Nickname is already in use");
+		return;
+	}
+
+	if (client.isRegistered())
+	{
+		if (client.getNickname() == nickname)
+			return;
+
+		// A nickname alone is a valid IRC prefix; keep the old name as origin.
+		const std::string notification = ":" + client.getNickname() + " NICK :" + nickname;
+		client.setNickname(nickname);
+		queueMessage(client.getFd(), notification);
+
+		// Notify each registered peer once, even when several channels are shared.
+		const std::set<std::string> &channels = client.getChannels();
+		for (std::map<int, Client>::const_iterator it = _clients.begin(); it != _clients.end(); ++it)
+		{
+			if (it->first == client.getFd() || !it->second.isRegistered())
+				continue;
+			for (std::set<std::string>::const_iterator channel = channels.begin(); channel != channels.end(); ++channel)
+			{
+				if (it->second.isInChannel(*channel))
+				{
+					queueMessage(it->first, notification);
+					break;
+				}
+			}
+		}
 		return;
 	}
 
