@@ -46,6 +46,11 @@ void Channel::setTopic(const std::string &topic)
 	this->_topic = topic;
 }
 
+const std::string &Channel::getName() const
+{
+	return this->_channelName;
+}
+
 const std::string &Channel::getTopic() const
 {
 	return this->_topic;

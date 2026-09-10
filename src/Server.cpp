@@ -6,7 +6,7 @@
 /*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/09 15:48:25 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/10 17:13:40 by vbullock         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -708,23 +708,80 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
     std::cout << client.getNickname() << " joined "
               << channelName << " channel." << std::endl;
 	queueMessage(client.getFd(),
-            std::string("You have joined channel: ") + channelName);
+			":" + client.getNickname() + "!" + client.getUsername() + " JOIN " + channelName);
+	queueMessage(client.getFd(),
+			std::string("You have joined channel: ") + channelName);
 }
+
+
+
 void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 {
+	if (msg.params.size() < 2)
+	{
+		std::cout << "Not enough parameters" << std::endl;
+		return ;
+	}
+
+	std::string target = msg.params[0];
+	std::string msgprint;
+
+	for (std::vector<std::string>::const_iterator it = msg.params.begin(); it != msg.params.end(); ++it)
+	{
+		if (it != msg.params.begin())
+			msgprint += " ";
+		if(it == msg.params.begin())
+			++it;
+		msgprint += *it;
+	}
+
+	if (msg.params[0][0] == '#')
+		{
+			queueMessage(client.getFd(), "Message to channel");
+		}
+	else
+	{
+		std::map<int, Client>::iterator it;
+
+		for (it = _clients.begin(); it != _clients.end(); ++it)
+		{
+			if (areSameNicknames(it->second.getNickname(), target))
+			{
+				Client &recipient = it->second;
+				queueMessage(recipient.getFd(), msgprint);
+				break;
+			}
+		}
+	}
+
 	std::cout << client.getNickname() << std::endl;
 	std::cout << msg.command << std::endl;
 	std::cout << "Sending private message." << std::endl;
 }
 void Server::handleQuit(Client &client, const IrcMessage &msg)
 {
-	client.leaveChannel("leavechannel");
-	std::cout << msg.command << std::endl;
+	std::string quitmsg;
+
+	for (std::vector<std::string>::const_iterator it = msg.params.begin(); it != msg.params.end(); ++it)
+	{
+		if (it != msg.params.begin())
+			quitmsg += " ";
+		quitmsg += *it;
+	}
+
+	queueMessage(client.getFd(),
+		":" + client.getNickname() + "!" + client.getUsername() + " QUIT " + quitmsg);
+	//client needs to be removed from server
 	std::cout << "Removed client fd " << std::endl;
 }
 void Server::handleKick(Client &client, const IrcMessage &msg)
 {
-	client.leaveChannel("leavechannel");
+	if (msg.params.size() != 1)
+	{
+		queueMessage(client.getFd(),
+		"Only one parameter permitted for kick");
+	}
+	client.leaveChannel(msg.params[0]);
 	std::cout << msg.command << std::endl;
-	std::cout << "Kicking user." << std::endl;
+	std::cout << "Kicking user " << client.getNickname() << std::endl;
 }

@@ -6,7 +6,7 @@
 /*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/04 19:16:26 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/10 16:41:24 by vbullock         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -57,6 +57,7 @@ class Client
 		const std::string &getUsername() const;
 		void setRealname(const std::string &name);
 		const std::string &getRealname() const;
+
 
 		// PASS acceptance and completed registration are separate states.
 		void setPasswordAccepted(bool accepted);

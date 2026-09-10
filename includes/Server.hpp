@@ -6,7 +6,7 @@
 /*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/09 15:17:54 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/10 16:52:37 by vbullock         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -66,7 +66,7 @@ class Server
 		void processMessage(Client &client, const IrcMessage &msg);
 		bool isValidNickname(const std::string &nickname) const;
 		bool isNicknameInUse(const std::string &nickname, int ignoredFd) const;
-		
+	
 		void handlePass(Client &client, const IrcMessage &msg);
 		void handleNick(Client &client, const IrcMessage &msg);
 		void handleUser(Client &client, const IrcMessage &msg);
