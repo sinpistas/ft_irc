@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:40:51 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/10 18:46:58 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -32,7 +32,7 @@ static bool isNicknameSpecial(char character)
 {
 	return character == '[' || character == ']' || character == '\\'
 		|| character == '^' || character == '_' || character == '`'
-		|| character == '{' || character == '|';
+		|| character == '{' || character == '}' || character == '|';
 }
 
 static char foldIrcNickname(char character)
