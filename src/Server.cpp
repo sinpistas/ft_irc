@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:52:11 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/10 19:20:22 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -699,7 +699,8 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 {
     if (msg.params.size() != 1)
     {
-        queueMessage(client.getFd(), "Incorrect number of parameters.");
+        queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+            + " 461 " + client.getNickname() + " JOIN :Invalid number of parameters");
         return;
     }
 
@@ -729,10 +730,54 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 
     std::cout << client.getNickname() << " joined "
               << channelName << " channel." << std::endl;
-	queueMessage(client.getFd(),
-			":" + client.getNickname() + "!" + client.getUsername() + " JOIN " + channelName);
-	queueMessage(client.getFd(),
-			std::string("You have joined channel: ") + channelName);
+
+	// A nickname alone is a valid prefix, as in the NICK notifications.
+	const std::string notification = ":" + client.getNickname() + " JOIN :" + channelName;
+	for (std::map<int, Client>::const_iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		if (channel->second.hasMember(it->first))
+			queueMessage(it->first, notification);
+	}
+	sendJoinReplies(client, channel->second);
+}
+
+void Server::sendJoinReplies(const Client &client, const Channel &channel)
+{
+	const std::string target = client.getNickname() + " " + channel.getName();
+	if (channel.getTopic().empty())
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 331 " + target + " :No topic is set");
+	else
+	{
+		const std::string topicPrefix = std::string(":") + SERVER_NAME + " 332 " + target + " :";
+		const size_t topicSpace = topicPrefix.size() < 510 ? 510 - topicPrefix.size() : 0;
+		queueMessage(client.getFd(), topicPrefix
+			+ channel.getTopic().substr(0, topicSpace));
+	}
+
+	const std::string namesPrefix = std::string(":") + SERVER_NAME + " 353 "
+		+ client.getNickname() + " = " + channel.getName() + " :";
+	std::string names;
+	for (std::map<int, Client>::const_iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		if (!channel.hasMember(it->first))
+			continue;
+		const std::string entry = (channel.isOperator(it->first) ? "@" : "")
+			+ it->second.getNickname();
+		// Split between nicknames, leaving two bytes for the terminating CRLF.
+		if (!names.empty() && namesPrefix.size() + names.size() + 1 + entry.size() > 510)
+		{
+			queueMessage(client.getFd(), namesPrefix + names);
+			names.clear();
+		}
+		if (!names.empty())
+			names += " ";
+		names += entry;
+	}
+	if (!names.empty())
+		queueMessage(client.getFd(), namesPrefix + names);
+	queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+		+ " 366 " + target + " :End of NAMES list");
 }
 
 

@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:52:28 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/10 19:20:24 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -71,6 +71,8 @@ class Server
 		void handleNick(Client &client, const IrcMessage &msg);
 		void handleUser(Client &client, const IrcMessage &msg);
 		void handleJoin(Client &client, const IrcMessage &msg);
+		// Send the topic and member list to a client after a successful JOIN.
+		void sendJoinReplies(const Client &client, const Channel &channel);
 		void handlePrivmsg(Client &client, const IrcMessage &msg);
 		void handleQuit(Client &client, const IrcMessage &msg);
 		void handleKick(Client &client, const IrcMessage &msg);
