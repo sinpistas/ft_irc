@@ -6,7 +6,7 @@
 /*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/11 16:29:19 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/11 17:10:59 by vbullock         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -260,7 +260,19 @@ void Server::handleTopic(Client &client, const IrcMessage &msg)
         // Send 331 if empty, otherwise 332 with the topic.
 		if(msg.params[0] == "")
 			std::cout << "Empty parameter. Invalid topic name." << std::endl;
-		std::cout << "Topic name changed to: " << msg.params[0] << std::endl;
+		if(msg.params[0][0] == '#')
+		{
+			if (channel.getTopic().empty())
+				queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+						+ " 331 " + client.getNickname() + " " + channel.getName() + " :No topic is set");
+			else
+			{
+				const std::string topicPrefix = std::string(":") + SERVER_NAME + " 332 " + client.getNickname() + " " + channel.getName() + " :";
+				const size_t topicSpace = topicPrefix.size() < 510 ? 510 - topicPrefix.size() : 0;
+				queueMessage(client.getFd(), topicPrefix
+					+ channel.getTopic().substr(0, topicSpace));
+			}
+		}
         return;
     }
 
