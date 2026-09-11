@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Server.cpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
+/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 19:20:22 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/11 16:29:19 by vbullock         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -695,6 +695,7 @@ void Server::handleUser(Client &client, const IrcMessage &msg)
 			+ client.getNickname() + " :Welcome to the ft_irc server");
 	}
 }
+
 void Server::handleJoin(Client &client, const IrcMessage &msg)
 {
     if (msg.params.size() != 1)
@@ -790,22 +791,41 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 		return ;
 	}
 
-	std::string target = msg.params[0];
+	std::string target = normalizeIrcName(msg.params[0]);
 	std::string msgprint;
 
+	// Example MSG: :Wardog_E!wardoge@localhost PRIVMSG adios :hola
+
+	msgprint = ":" + client.getNickname() + "!" + client.getUsername() + " " + "PRIVMSG " + target;
 	for (std::vector<std::string>::const_iterator it = msg.params.begin(); it != msg.params.end(); ++it)
 	{
-		if (it != msg.params.begin())
-			msgprint += " ";
+		msgprint += " ";
 		if(it == msg.params.begin())
 			++it;
 		msgprint += *it;
 	}
 
 	if (msg.params[0][0] == '#')
+	{
+		std::map<std::string, Channel>::iterator it = _channels.find(target);
+		if (it != _channels.end())
 		{
-			queueMessage(client.getFd(), "Message to channel");
+			Channel &channel = it->second;
+			if (channel.hasMember(client.getFd()))
+			{
+				for (std::map<int, Client>::iterator clientIt = _clients.begin();
+					clientIt != _clients.end(); ++clientIt)
+				{
+					if (clientIt->first != client.getFd()
+						&& channel.hasMember(clientIt->first))
+					{
+						queueMessage(clientIt->first, msgprint);
+						std::cout << "Sending message through channel." << std::endl;
+					}	
+				}
+			}
 		}
+	}
 	else
 	{
 		std::map<int, Client>::iterator it;
@@ -816,6 +836,7 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 			{
 				Client &recipient = it->second;
 				queueMessage(recipient.getFd(), msgprint);
+				std::cout << "Sending private message." << std::endl;
 				break;
 			}
 		}
@@ -823,8 +844,8 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 
 	std::cout << client.getNickname() << std::endl;
 	std::cout << msg.command << std::endl;
-	std::cout << "Sending private message." << std::endl;
 }
+
 void Server::handleQuit(Client &client, const IrcMessage &msg)
 {
 	std::string quitmsg;
