@@ -2,8 +2,8 @@
 
 # Configuración del servidor
 HOST="127.0.0.1"
-PORT=6667
-PASS="1234"
+PORT=2020
+PASS="samurai"
 
 # Función para simular un cliente y enviar comandos con retardos (sleep)
 run_client_1() {

@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 20:56:08 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 23:32:05 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -22,109 +22,91 @@
 #include "Channel.hpp"
 #include "IrcMessage.hpp"
 
-// Store the configuration and expose the server lifecycle entry point.
+// Own the connections and channels; definitions are grouped by responsibility
+// in src/server, with each IRC command implemented in src/commands.
 class Server
 {
 	public:
-		// Initialize the server with the listening port and client password.
 		Server(int port, const std::string &password);
 		~Server();
-
-		// Start the server's main runtime logic.
 		void run();
 
 	private:
-		// Disable default construction and copying for this server instance.
 		Server();
 		Server(const Server &other);
 		Server &operator=(const Server &other);
 
-		// Ignore SIGPIPE so a send() to an already-closed client cannot kill the process.
+		// Lifecycle and the single event loop (Server.cpp).
 		void ignoreSigpipe();
-		// Turn SIGINT and SIGTERM into a request to leave the poll loop, so the
-		// server can shut down on its own terms instead of being killed.
 		void catchShutdownSignals();
-		// Create, bind and listen on the server's TCP socket.
+		void pollLoop();
+
+		// Socket setup and non-blocking I/O (ServerNetwork.cpp).
 		void initSocket();
-		// Add O_NONBLOCK to a file descriptor's existing flags.
 		void setNonBlocking(int fd);
-		// Accept every pending connection on the server socket.
 		void acceptNewClients();
-		// Read once after POLLIN; EOF or an error means the client must be removed.
+		// Read/write once after the corresponding poll event. False means
+		// the connection must be removed; partial output remains queued.
 		bool receiveFromClient(int fd);
-		// Pull every complete "\r\n"-terminated line out of a client's buffer.
-		void extractCompleteLines(int fd);
-		// Queue a line, appending CRLF once. Only callers sending free text
-		// may allow its trailing parameter to be shortened to fit 512 bytes.
-		void queueMessage(int fd, const std::string &message, bool truncateText = false);
-		// Write once after POLLOUT, preserving unsent bytes for the next event;
-		// false means the client must be removed.
 		bool sendToClient(int fd);
-		// Sync a client's pollfd events with whether it has pending output.
 		void updateClientPollEvents(int fd);
-		// Mark a client as "must be disconnected" without touching any
-		// container. Command handlers must call this instead of removeClient():
-		// while a handler runs, both extractCompleteLines() and pollLoop() are
-		// still holding an iterator/index into _clients and _pollFds.
+
+		// Client lookup, deadlines and disconnection (ServerClients.cpp).
+		std::map<int, Client>::iterator findClientByNickname(const std::string &nickname);
+		// Handlers mark instead of erasing: command dispatch and poll still
+		// hold iterators. Marking must not allocate, including on bad_alloc.
 		void markForRemoval(int fd);
 		bool isMarkedForRemoval(int fd) const;
-		// Abort only this connection; marking it must itself need no memory.
 		void handleMemoryFailure(int fd);
-		// Disconnect every client marked during this pass. Called from one
-		// single place, once both loops above are done with their iterators.
+		// Called after the poll iteration, when erasing clients is safe.
 		void removePendingClients();
-		// The only operations allowed to change a membership. They keep the
-		// two sides of it in step -- Channel::_members, which every lookup
-		// reads, and the client's own channel list, which the NICK
-		// notification walks -- and they destroy a channel once its last
-		// member leaves. No handler may touch either side on its own.
+		void broadcastQuit(const Client &client);
+		void removeClient(int fd);
+		void disconnectStaleClients();
+
+		// Membership operations (ServerChannels.cpp). These keep the Client
+		// and Channel indexes consistent and erase channels left empty.
 		void addToChannel(Client &client, Channel &channel);
 		void removeFromChannel(Client &client, std::string channelName);
-		// Take a client out of every channel before it is destroyed.
+		// Disconnection cleanup must complete without new allocations.
 		void removeFromAllChannels(Client &client);
-		// Tell everyone sharing a channel with this client that it is leaving.
-		// Must run before it is taken out of its channels.
-		void broadcastQuit(const Client &client);
-		// Remove channel membership, then close the fd and erase the client.
-		void removeClient(int fd);
-		// Drop the connections that are taking too long to register: an
-		// unauthenticated client must not hold a descriptor open for ever.
-		void disconnectStaleClients();
-		// Watch every monitored descriptor with poll() and report activity.
-		void pollLoop();
-		
-		// New stuff
+
+		// Framing, dispatch and replies (ServerProtocol.cpp).
+		void extractCompleteLines(int fd);
 		void processMessage(Client &client, const IrcMessage &msg);
-		bool isValidNickname(const std::string &nickname) const;
-		bool isNicknameInUse(const std::string &nickname, int ignoredFd) const;
-		// The client answering to this nickname, or _clients.end() if nobody
-		// does. Nicknames are compared the way IRC compares them.
-		std::map<int, Client>::iterator findClientByNickname(const std::string &nickname);
-	
+		// Append CRLF once. Only free-text trailing parameters may be
+		// shortened; prefix, command and targets must remain complete.
+		void queueMessage(int fd, const std::string &message, bool truncateText = false);
+		// Called once, immediately after registration succeeds.
+		void sendWelcome(const Client &client);
+
+		// IRC commands. Each handler is defined in its own src/commands file.
 		void handlePass(Client &client, const IrcMessage &msg);
 		void handleNick(Client &client, const IrcMessage &msg);
 		void handleUser(Client &client, const IrcMessage &msg);
 		void handleJoin(Client &client, const IrcMessage &msg);
 		void handlePart(Client &client, const IrcMessage &msg);
 		void handleInvite(Client &client, const IrcMessage &msg);
-		// Send the topic and member list to a client after a successful JOIN.
-		void sendJoinReplies(const Client &client, const Channel &channel);
 		void handlePrivmsg(Client &client, const IrcMessage &msg);
 		void handleQuit(Client &client, const IrcMessage &msg);
 		void handleKick(Client &client, const IrcMessage &msg);
-		void handleMode(Client &client, const IrcMessage &msg);
 		void handleTopic(Client &client, const IrcMessage &msg);
+		void handleMode(Client &client, const IrcMessage &msg);
 
+		// NICK-only helpers, implemented in Nick.cpp.
+		bool isValidNickname(const std::string &nickname) const;
+		bool isNicknameInUse(const std::string &nickname, int ignoredFd) const;
+		// JOIN-only replies, implemented in Join.cpp.
+		void sendJoinReplies(const Client &client, const Channel &channel);
 
-		int                       _port;
-		std::string               _password;
-		int                       _serverFd;
-		// File descriptors monitored by the poll() event loop.
+		static const char SERVER_NAME[];
+		int _port;
+		std::string _password;
+		int _serverFd;
 		std::vector<struct pollfd> _pollFds;
-		// Connected clients, keyed by their fd. Pending removals are stored
-		// in Client's closing state, so marking never allocates.
-		std::map<int, Client>     _clients;
-		// Channel keys use normalizeIrcName() so all spellings share one entry.
+		// Closing state is stored in Client, so marking never allocates.
+		std::map<int, Client> _clients;
+		// Keys use normalizeIrcName; Channel preserves the original spelling.
 		std::map<std::string, Channel> _channels;
 };
 

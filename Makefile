@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+         #
+#    By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/08/22 13:50:13 by apestana          #+#    #+#              #
-#    Updated: 2026/09/04 19:19:28 by vbullock         ###   ########.fr        #
+#    Updated: 2026/09/13 23:29:05 by apestana         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -31,7 +31,23 @@ OBJDIR		= obj
 ##### Sources ################################
 
 SRC			=	main.cpp \
-				Server.cpp \
+				server/Server.cpp \
+				server/ServerNetwork.cpp \
+				server/ServerClients.cpp \
+				server/ServerChannels.cpp \
+				server/ServerProtocol.cpp \
+				commands/Pass.cpp \
+				commands/Nick.cpp \
+				commands/User.cpp \
+				commands/Join.cpp \
+				commands/Part.cpp \
+				commands/Invite.cpp \
+				commands/Privmsg.cpp \
+				commands/Quit.cpp \
+				commands/Kick.cpp \
+				commands/Topic.cpp \
+				commands/Mode.cpp \
+				IrcParameters.cpp \
 				Client.cpp \
 				IrcMessage.cpp \
 				Channel.cpp
