@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 18:05:46 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 18:39:59 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -391,8 +391,11 @@ void Server::handleTopic(Client &client, const IrcMessage &msg)
 void Server::processMessage(Client &client, const IrcMessage &msg)
 {
 	// Registration commands are the only commands accepted before welcome (001).
+	// QUIT is allowed before registration too: a client that gives up half
+	// way through should be able to say so and leave, not be told that it
+	// has not registered.
 	if (!client.isRegistered() && msg.command != "PASS" && msg.command != "NICK"
-		&& msg.command != "USER")
+		&& msg.command != "USER" && msg.command != "QUIT")
 	{
 		std::string target;
 
@@ -1240,19 +1243,28 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 
 void Server::handleQuit(Client &client, const IrcMessage &msg)
 {
-	std::string quitmsg;
+	// QUIT takes one optional parameter, the message to leave behind. It
+	// arrives as the trailing parameter, so it may hold spaces and there is
+	// never more than one of it.
+	const std::string reason = (msg.params.empty() || msg.params[0].empty())
+		? "Client Quit" : msg.params[0];
 
-	for (std::vector<std::string>::const_iterator it = msg.params.begin(); it != msg.params.end(); ++it)
-	{
-		if (it != msg.params.begin())
-			quitmsg += " ";
-		quitmsg += *it;
-	}
+	// Kept on the client because the announcement does not go out from here:
+	// it goes out when the client is actually removed, at the end of the
+	// pass, from the one place that knows who to tell.
+	client.setQuitReason(reason);
 
-	queueMessage(client.getFd(),
-		":" + client.getNickname() + "!" + client.getUsername() + " QUIT " + quitmsg);
-	//client needs to be removed from server
-	std::cout << "Removed client fd " << std::endl;
+	// RFC 2812 3.1.7: the server answers a QUIT with an ERROR message. This
+	// is the last thing this client will be sent, and it does arrive: a
+	// client on its way out is held on to until its queue has drained.
+	queueMessage(client.getFd(), "ERROR :Closing Link: " + client.getHostname()
+		+ " (Quit: " + reason + ")");
+
+	// Everything that is left -- telling the channels, leaving them, closing
+	// the socket -- is what removing a client does anyway, so it is done
+	// through the single path that does it properly. Marking also stops any
+	// further command this client may have sent from being executed.
+	markForRemoval(client.getFd());
 }
 void Server::handleKick(Client &client, const IrcMessage &msg)
 {
