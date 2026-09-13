@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 13:43:05 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:02:46 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -475,17 +475,54 @@ void Server::removePendingClients()
 		removeClient(*it);
 }
 
-void Server::removeClient(int fd)
+void Server::addToChannel(Client &client, Channel &channel)
 {
-	// Remove channel membership before close() allows this fd to be reused.
+	channel.addMember(client.getFd());
+	client.joinChannel(channel.getName());
+}
+
+void Server::removeFromChannel(Client &client, std::string channelName)
+{
+	// Taken by value on purpose: a caller may well be handing over the key
+	// of the very map entry this function is about to erase.
+	const std::string key = normalizeIrcName(channelName);
+
+	client.leaveChannel(key);
+
+	std::map<std::string, Channel>::iterator it = _channels.find(key);
+	if (it == _channels.end())
+		return;
+
+	// removeMember() drops the operator privilege along with the membership.
+	it->second.removeMember(client.getFd());
+
+	// A channel exists only as long as it has members: the last one to leave
+	// takes its topic, its modes and its operator list with it.
+	if (it->second.isEmpty())
+		_channels.erase(it);
+}
+
+void Server::removeFromAllChannels(Client &client)
+{
+	// Walk the channels rather than the client's own list: should a fd ever
+	// end up in a channel without that list being updated, this still cleans
+	// it out. Leaving an fd behind in a channel would mean writing to a
+	// descriptor that the system may already have handed to someone else.
 	for (std::map<std::string, Channel>::iterator it = _channels.begin(); it != _channels.end(); )
 	{
-		it->second.removeMember(fd);
-		if (it->second.isEmpty())
-			_channels.erase(it++);
-		else
-			++it;
+		// removeFromChannel() may erase the entry, so step past it first.
+		std::map<std::string, Channel>::iterator current = it++;
+		if (current->second.hasMember(client.getFd()))
+			removeFromChannel(client, current->first);
 	}
+}
+
+void Server::removeClient(int fd)
+{
+	// Leave every channel before close() allows this fd to be reused.
+	std::map<int, Client>::iterator clientIt = _clients.find(fd);
+	if (clientIt != _clients.end())
+		removeFromAllChannels(clientIt->second);
 
 	for (std::vector<struct pollfd>::iterator it = _pollFds.begin(); it != _pollFds.end(); ++it)
 	{
@@ -760,8 +797,7 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
     else if (channel->second.hasMember(client.getFd()))
         return;
 
-    client.joinChannel(channelName);
-    channel->second.addMember(client.getFd());
+    addToChannel(client, channel->second);
     if (created)
         channel->second.addOperator(client.getFd());
 

@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 13:14:43 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:02:46 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -67,6 +67,15 @@ class Server
 		// Disconnect every client marked during this pass. Called from one
 		// single place, once both loops above are done with their iterators.
 		void removePendingClients();
+		// The only operations allowed to change a membership. They keep the
+		// two sides of it in step -- Channel::_members, which every lookup
+		// reads, and the client's own channel list, which the NICK
+		// notification walks -- and they destroy a channel once its last
+		// member leaves. No handler may touch either side on its own.
+		void addToChannel(Client &client, Channel &channel);
+		void removeFromChannel(Client &client, std::string channelName);
+		// Take a client out of every channel before it is destroyed.
+		void removeFromAllChannels(Client &client);
 		// Remove channel membership, then close the fd and erase the client.
 		void removeClient(int fd);
 		// Watch every monitored descriptor with poll() and report activity.

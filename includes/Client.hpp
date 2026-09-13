@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 13:51:49 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:02:47 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -73,7 +73,13 @@ class Client
 		bool tryRegister();
 		bool isRegistered() const;
 		
-		// Channel Management (for JOIN/KICK)
+		// Channel membership, this side of it: the names are only an index of
+		// the channels holding this client's fd, kept so a NICK change can find
+		// the peers to notify. Server::addToChannel() and
+		// Server::removeFromChannel() are the only callers allowed, because
+		// they are what keeps this list and Channel::_members from drifting
+		// apart. Calling these two directly from a command handler puts the
+		// two sides out of sync.
 		void joinChannel(const std::string &channel);
 		void leaveChannel(const std::string &channel);
 		const std::set<std::string> &getChannels() const;
