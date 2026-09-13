@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:02:46 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:15:29 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
@@ -145,7 +146,14 @@ void Server::acceptNewClients()
 {
 	while (true)
 	{
-		int clientFd = accept(_serverFd, NULL, NULL);
+		// The peer address is needed for the host part of this client's
+		// prefix, and accept() is the only chance to collect it.
+		struct sockaddr_in address;
+		socklen_t addressLen = sizeof(address);
+		std::memset(&address, 0, sizeof(address));
+
+		int clientFd = accept(_serverFd,
+			reinterpret_cast<struct sockaddr *>(&address), &addressLen);
 		if (clientFd < 0)
 		{
 			// No more pending connections; this is the normal way out of the loop.
@@ -170,13 +178,21 @@ void Server::acceptNewClients()
 			continue;
 		}
 
+		// Keep the numeric address as the host name. Turning it into a real
+		// name would take a reverse DNS lookup, which blocks for as long as
+		// the resolver takes and would freeze every other client with it.
+		char numericHost[INET_ADDRSTRLEN];
+		std::string hostname = "unknown";
+		if (inet_ntop(AF_INET, &address.sin_addr, numericHost, sizeof(numericHost)) != NULL)
+			hostname = numericHost;
+
 		struct pollfd clientPoll;
 		clientPoll.fd = clientFd;
 		clientPoll.events = POLLIN;
 		clientPoll.revents = 0;
 		_pollFds.push_back(clientPoll);
 
-		_clients.insert(std::pair<int, Client>(clientFd, Client(clientFd)));
+		_clients.insert(std::pair<int, Client>(clientFd, Client(clientFd, hostname)));
 
 		std::cout << "Accepted new client, fd " << clientFd << std::endl;
 	}
@@ -695,8 +711,9 @@ void Server::handleNick(Client &client, const IrcMessage &msg)
 		if (client.getNickname() == nickname)
 			return;
 
-		// A nickname alone is a valid IRC prefix; keep the old name as origin.
-		const std::string notification = ":" + client.getNickname() + " NICK :" + nickname;
+		// The prefix carries the name the client had until now: that is how
+		// its peers know which of them is the one renaming itself.
+		const std::string notification = ":" + client.getPrefix() + " NICK :" + nickname;
 		client.setNickname(nickname);
 		queueMessage(client.getFd(), notification);
 
@@ -804,8 +821,7 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
     std::cout << client.getNickname() << " joined "
               << channelName << " channel." << std::endl;
 
-	// A nickname alone is a valid prefix, as in the NICK notifications.
-	const std::string notification = ":" + client.getNickname() + " JOIN :" + channelName;
+	const std::string notification = ":" + client.getPrefix() + " JOIN :" + channelName;
 	for (std::map<int, Client>::const_iterator it = _clients.begin(); it != _clients.end(); ++it)
 	{
 		if (channel->second.hasMember(it->first))

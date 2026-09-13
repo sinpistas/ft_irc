@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:02:47 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:15:31 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -17,17 +17,24 @@
 #include <string>
 #include <cstddef>
 #include <set>
-#include <map>
 
 // Minimal per-connection state: its file descriptor and raw receive buffer.
 class Client
 {
 	public:
-		explicit Client(int fd);
+		Client(int fd, const std::string &hostname);
 		~Client();
 
 		// Return the descriptor associated with this connection.
 		int getFd() const;
+		// The address this connection came from, which is the host part of
+		// every message this client originates.
+		const std::string &getHostname() const;
+		// "nick!user@host": the prefix RFC 2812 puts on every message sent by
+		// a client, so whoever receives it knows who it came from. Build it
+		// only here, never by hand at each call site, and never before the
+		// client is registered, when nickname and username are still empty.
+		std::string getPrefix() const;
 
 		// Preserve received data. An IRC message may occupy 512 bytes at most,
 		// CRLF included; a line longer than that is dropped on its own, without
@@ -91,16 +98,12 @@ class Client
 		void addMode(char mode);      // Add single mode
 		void removeMode(char mode);   // Remove single mode
 		bool hasMode(char mode) const; // Check if mode is set
-		
-		// Per-channel modes (for KICK/MODE in channels)
-		void setChannelMode(const std::string &channel, char mode);
-		void removeChannelMode(const std::string &channel, char mode);
-		bool isOperatorInChannel(const std::string &channel) const;
 
 	private:
 		Client();
 
 		int         _fd;
+		std::string _hostname;
 		std::string _receiveBuffer;
 		// Set while the remains of an over-long line are being skipped, up to
 		// and including the LF that ends it.
@@ -114,7 +117,6 @@ class Client
 		std::string  _modes;              // For MODE command (e.g., "io" for invisible+operator)
 		bool         _passwordAccepted;
 		bool         _isRegistered;
-		std::map<std::string, std::string> _channelModes;  // Per-channel modes (e.g., channel -> operator status)
 };
 
 #endif

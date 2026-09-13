@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 13:51:48 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:15:30 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -18,8 +18,8 @@ static const size_t MAX_IRC_LINE_SIZE = 512;
 // allowed 510 at most.
 static const size_t MAX_IRC_LINE_CONTENT = MAX_IRC_LINE_SIZE - 2;
 
-Client::Client(int fd)
-	: _fd(fd), _discardingLine(false),
+Client::Client(int fd, const std::string &hostname)
+	: _fd(fd), _hostname(hostname), _discardingLine(false),
 	  _passwordAccepted(false), _isRegistered(false)
 {
 }
@@ -31,6 +31,16 @@ Client::~Client()
 int Client::getFd() const
 {
 	return _fd;
+}
+
+const std::string &Client::getHostname() const
+{
+	return _hostname;
+}
+
+std::string Client::getPrefix() const
+{
+	return _nickname + "!" + _username + "@" + _hostname;
 }
 
 void Client::appendToBuffer(const char *data, size_t len)
