@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:53:29 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 16:04:16 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -27,9 +27,22 @@
 #include <poll.h>
 #include <csignal>
 #include <cctype>
+#include <ctime>
 #include <set>
 
 static const char *SERVER_NAME = "irc.local";
+
+// How long a connection may stay without completing PASS/NICK/USER. The
+// password is what protects this server, so a client that never gets past
+// it may not keep a descriptor, a buffer and a poll slot indefinitely.
+static const std::time_t REGISTRATION_TIMEOUT = 30;
+// How long a client being disconnected is kept alive so that the reply
+// explaining why still reaches it. A client that does not read it loses it.
+static const std::time_t CLOSING_LINGER = 2;
+// poll() has to come back on its own every now and then, or the timeouts
+// above would only be noticed when some other client happens to send
+// something.
+static const int POLL_TIMEOUT_MS = 1000;
 
 static bool isValidChannelName(const std::string &name)
 {
@@ -42,6 +55,19 @@ static bool isValidChannelName(const std::string &name)
 			return false;
 	}
 	return true;
+}
+
+// A value taken from the client goes into a reply as ONE parameter. A space
+// would split it into two, and a leading ':' would turn it into the trailing
+// parameter that swallows the rest of the line: either way the client would
+// parse a numeric with a different shape than the one meant for it. Anything
+// that cannot be sent as itself is replaced by the '*' placeholder.
+static std::string safeParameter(const std::string &value)
+{
+	const std::string token = value.substr(0, value.find(' '));
+	if (token.empty() || token[0] == ':')
+		return "*";
+	return token;
 }
 
 static bool isNicknameSpecial(char character)
@@ -417,10 +443,12 @@ void Server::updateClientPollEvents(int fd)
 	{
 		if (it->fd == fd)
 		{
-			// Always watch for readability; only ask for POLLOUT while there
-			// is something queued, otherwise poll() would keep reporting it
-			// writable forever and spin the loop for no reason.
-			it->events = POLLIN;
+			// Watch for readability, unless the client is on its way out and
+			// its input is not going to be read any more; and only ask for
+			// POLLOUT while there is something queued, otherwise poll() would
+			// keep reporting it writable forever and spin the loop for no
+			// reason.
+			it->events = isMarkedForRemoval(fd) ? 0 : POLLIN;
 			if (clientIt->second.hasPendingOutput())
 				it->events |= POLLOUT;
 			break;
@@ -480,8 +508,18 @@ void Server::markForRemoval(int fd)
 {
 	// Only ever records the descriptor: erasing here would invalidate the
 	// iterators and indices that the read loop and the poll loop are using.
-	if (_clients.find(fd) != _clients.end())
-		_pendingRemoval.insert(fd);
+	std::map<int, Client>::iterator it = _clients.find(fd);
+	if (it == _clients.end())
+		return;
+
+	if (_pendingRemoval.insert(fd).second)
+	{
+		it->second.startClosing();
+		// Nothing this client says from now on will be acted upon, so stop
+		// asking poll() about its input: it is only the queued reply that
+		// still has somewhere to go.
+		updateClientPollEvents(fd);
+	}
 }
 
 bool Server::isMarkedForRemoval(int fd) const
@@ -498,8 +536,23 @@ void Server::removePendingClients()
 	std::set<int> pending;
 	pending.swap(_pendingRemoval);
 
+	const std::time_t now = std::time(NULL);
 	for (std::set<int>::const_iterator it = pending.begin(); it != pending.end(); ++it)
+	{
+		std::map<int, Client>::const_iterator clientIt = _clients.find(*it);
+		// close() throws away whatever is still queued, so a client being
+		// disconnected is held on to until the reply explaining why has gone
+		// out -- but never longer than CLOSING_LINGER, or one that simply
+		// stops reading would keep its descriptor alive by doing nothing.
+		if (clientIt != _clients.end()
+			&& clientIt->second.hasPendingOutput()
+			&& now - clientIt->second.getClosingTime() < CLOSING_LINGER)
+		{
+			_pendingRemoval.insert(*it);
+			continue;
+		}
 		removeClient(*it);
+	}
 }
 
 void Server::addToChannel(Client &client, Channel &channel)
@@ -599,6 +652,22 @@ void Server::removeClient(int fd)
 	std::cout << "Removed client fd " << fd << std::endl;
 }
 
+void Server::disconnectStaleClients()
+{
+	const std::time_t now = std::time(NULL);
+	for (std::map<int, Client>::iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		if (it->second.isRegistered() || isMarkedForRemoval(it->first))
+			continue;
+		if (now - it->second.getConnectionTime() < REGISTRATION_TIMEOUT)
+			continue;
+
+		queueMessage(it->first, "ERROR :Closing Link: " + it->second.getHostname()
+			+ " (Registration timeout)");
+		markForRemoval(it->first);
+	}
+}
+
 void Server::pollLoop()
 {
 	// Register the listening socket and ask poll() to report incoming data.
@@ -615,7 +684,7 @@ void Server::pollLoop()
 	while (true)
 	{
 		// Wait indefinitely until one of the monitored descriptors has an event.
-		int ready = poll(&_pollFds[0], _pollFds.size(), -1);
+		int ready = poll(&_pollFds[0], _pollFds.size(), POLL_TIMEOUT_MS);
 		if (ready < 0)
 		{
 			// A signal may interrupt poll(); retry instead of treating it as a fatal error.
@@ -647,6 +716,15 @@ void Server::pollLoop()
 				continue;
 			}
 
+			// This client is already on its way out: the only thing left to
+			// do with it is push out the reply that says why.
+			if (isMarkedForRemoval(fd))
+			{
+				if (revents & POLLOUT)
+					sendToClient(fd);
+				continue;
+			}
+
 			// A peer can send its last bytes and close in the same instant, so
 			// the kernel may report POLLIN and POLLHUP/POLLERR together. Read
 			// first and always extract whatever complete lines that leaves in
@@ -668,6 +746,8 @@ void Server::pollLoop()
 				|| ((revents & POLLHUP) && !(revents & POLLIN)))
 				markForRemoval(fd);
 		}
+
+		disconnectStaleClients();
 
 		// The single point where clients are erased: removeClient() modifies
 		// _clients and _pollFds, which the loop above is still indexing.
@@ -711,6 +791,12 @@ void Server::handlePass(Client &client, const IrcMessage &msg)
 		client.setPasswordAccepted(false);
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 			+ " 464 " + target + " :Password incorrect");
+		// Without the password there is nothing this connection can go on to
+		// do, so it is told why and shown the door instead of being left to
+		// sit there for as long as it likes.
+		queueMessage(client.getFd(), "ERROR :Closing Link: "
+			+ client.getHostname() + " (Bad password)");
+		markForRemoval(client.getFd());
 		return;
 	}
 
@@ -728,7 +814,9 @@ void Server::handleNick(Client &client, const IrcMessage &msg)
 		return;
 	}
 
-	if (msg.params.empty())
+	// "NICK" with nothing after it, and "NICK :" with an empty parameter, are
+	// the same thing to the user: no nickname was given.
+	if (msg.params.empty() || msg.params[0].empty())
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 			+ " 431 " + target + " :No nickname given");
@@ -739,14 +827,14 @@ void Server::handleNick(Client &client, const IrcMessage &msg)
 	if (msg.params.size() != 1 || !isValidNickname(nickname))
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-			+ " 432 " + target + " " + nickname + " :Erroneous nickname");
+			+ " 432 " + target + " " + safeParameter(nickname) + " :Erroneous nickname");
 		return;
 	}
 
 	if (isNicknameInUse(nickname, client.getFd()))
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-			+ " 433 " + target + " " + nickname + " :Nickname is already in use");
+			+ " 433 " + target + " " + safeParameter(nickname) + " :Nickname is already in use");
 		return;
 	}
 
@@ -842,9 +930,9 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
     const std::string channelName = normalizeIrcName(msg.params[0]);
     if (!isValidChannelName(channelName))
     {
-        // Use a safe placeholder: invalid input may contain protocol delimiters.
         queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-            + " 476 " + client.getNickname() + " * :Bad Channel Mask");
+            + " 476 " + client.getNickname() + " "
+            + safeParameter(channelName) + " :Bad Channel Mask");
         return;
     }
 

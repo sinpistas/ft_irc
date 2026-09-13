@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:53:28 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 16:04:21 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -15,7 +15,9 @@
 #include "IrcLimits.hpp"
 
 Client::Client(int fd, const std::string &hostname)
-	: _fd(fd), _hostname(hostname), _discardingLine(false),
+	: _fd(fd), _hostname(hostname),
+	  _connectedAt(std::time(NULL)), _closingSince(0),
+	  _discardingLine(false),
 	  _quitReason("Connection closed"),
 	  _passwordAccepted(false), _isRegistered(false)
 {
@@ -33,6 +35,22 @@ int Client::getFd() const
 const std::string &Client::getHostname() const
 {
 	return _hostname;
+}
+
+std::time_t Client::getConnectionTime() const
+{
+	return _connectedAt;
+}
+
+void Client::startClosing()
+{
+	if (_closingSince == 0)
+		_closingSince = std::time(NULL);
+}
+
+std::time_t Client::getClosingTime() const
+{
+	return _closingSince;
 }
 
 std::string Client::getPrefix() const

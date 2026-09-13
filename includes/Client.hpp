@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:24:06 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 16:04:20 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -16,6 +16,7 @@
 #include <iostream>
 #include <string>
 #include <cstddef>
+#include <ctime>
 #include <set>
 
 // Minimal per-connection state: its file descriptor and raw receive buffer.
@@ -30,6 +31,13 @@ class Client
 		// The address this connection came from, which is the host part of
 		// every message this client originates.
 		const std::string &getHostname() const;
+		// When the connection was accepted, to measure how long it is taking
+		// to finish registering.
+		std::time_t getConnectionTime() const;
+		// Start the wait that lets the bytes explaining a disconnection reach
+		// the client before its socket is closed. Only the first call counts.
+		void startClosing();
+		std::time_t getClosingTime() const;
 		// "nick!user@host": the prefix RFC 2812 puts on every message sent by
 		// a client, so whoever receives it knows who it came from. Build it
 		// only here, never by hand at each call site, and never before the
@@ -109,6 +117,8 @@ class Client
 
 		int         _fd;
 		std::string _hostname;
+		std::time_t _connectedAt;
+		std::time_t _closingSince;
 		std::string _receiveBuffer;
 		// Set while the remains of an over-long line are being skipped, up to
 		// and including the LF that ends it.
