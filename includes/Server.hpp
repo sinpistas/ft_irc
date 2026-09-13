@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 16:15:32 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 18:05:47 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -41,6 +41,9 @@ class Server
 
 		// Ignore SIGPIPE so a send() to an already-closed client cannot kill the process.
 		void ignoreSigpipe();
+		// Turn SIGINT and SIGTERM into a request to leave the poll loop, so the
+		// server can shut down on its own terms instead of being killed.
+		void catchShutdownSignals();
 		// Create, bind and listen on the server's TCP socket.
 		void initSocket();
 		// Add O_NONBLOCK to a file descriptor's existing flags.

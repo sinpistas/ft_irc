@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 17:55:38 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 18:05:46 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -31,6 +31,20 @@
 #include <set>
 
 static const char *SERVER_NAME = "irc.local";
+
+// Raised by the signal handler to ask the poll loop to finish. sig_atomic_t
+// is the only type the standard promises can be written from a handler
+// without tearing, and volatile stops the compiler from assuming that
+// nothing outside the loop can change it.
+static volatile sig_atomic_t g_stopRequested = 0;
+
+// A signal handler may do very little safely, so it does the least possible:
+// raise the flag and return. The work of shutting down happens back in the
+// loop, where it can be done properly.
+static void requestStop(int)
+{
+	g_stopRequested = 1;
+}
 
 // How long a connection may stay without completing PASS/NICK/USER. The
 // password is what protects this server, so a client that never gets past
@@ -121,7 +135,14 @@ Server::Server(int port, const std::string &password)
 
 Server::~Server()
 {
-	// Release the listening socket when the server is destroyed.
+	// Close the client connections before the listening socket. Letting the
+	// process exit take care of them would work, but only by accident: a
+	// server that shuts down on purpose should hand back what it borrowed.
+	for (std::map<int, Client>::const_iterator it = _clients.begin();
+		it != _clients.end(); ++it)
+		close(it->first);
+	_clients.clear();
+
 	if (_serverFd >= 0)
 		close(_serverFd);
 }
@@ -149,6 +170,21 @@ void Server::ignoreSigpipe()
 	-optval: A pointer to the value you wish to assign to the option.
 	-optlen: The size in bytes of the value pointed to by optval.
 */
+void Server::catchShutdownSignals()
+{
+	struct sigaction sa;
+	std::memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = requestStop;
+	sigemptyset(&sa.sa_mask);
+	// No SA_RESTART on purpose: poll() has to come back with EINTR so the
+	// loop gets a chance to look at the flag. Restarting it automatically
+	// would leave the server blocked until some client happened to speak.
+	sa.sa_flags = 0;
+
+	if (sigaction(SIGINT, &sa, NULL) < 0 || sigaction(SIGTERM, &sa, NULL) < 0)
+		throw std::runtime_error(std::string("sigaction: ") + std::strerror(errno));
+}
+
 void Server::initSocket()
 {
 	// 1-Create an IPv4 TCP socket for incoming client connections.
@@ -736,13 +772,17 @@ void Server::pollLoop()
 
 	std::cout << "Waiting for activity on the server socket..." << std::endl;
 
-	while (true)
+	while (!g_stopRequested)
 	{
-		// Wait indefinitely until one of the monitored descriptors has an event.
+		// Wait for one of the monitored descriptors to have an event, or for
+		// the timeout to come round so the registration and closing deadlines
+		// get looked at.
 		int ready = poll(&_pollFds[0], _pollFds.size(), POLL_TIMEOUT_MS);
 		if (ready < 0)
 		{
-			// A signal may interrupt poll(); retry instead of treating it as a fatal error.
+			// A signal interrupted poll(). If it was one asking the server to
+			// stop, the loop condition is about to see it; anything else just
+			// means going round again.
 			if (errno == EINTR)
 				continue;
 			throw std::runtime_error(std::string("poll: ") + std::strerror(errno));
@@ -808,11 +848,15 @@ void Server::pollLoop()
 		// _clients and _pollFds, which the loop above is still indexing.
 		removePendingClients();
 	}
+
+	std::cout << "Shutting down, closing " << _clients.size()
+		<< " connection(s)" << std::endl;
 }
 
 void Server::run()
 {
 	ignoreSigpipe();
+	catchShutdownSignals();
 	initSocket();
 	pollLoop();
 }
