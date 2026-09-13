@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 13:43:04 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 13:51:48 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -19,7 +19,7 @@ static const size_t MAX_IRC_LINE_SIZE = 512;
 static const size_t MAX_IRC_LINE_CONTENT = MAX_IRC_LINE_SIZE - 2;
 
 Client::Client(int fd)
-	: _fd(fd), _discardingLine(false), _discardedCR(false),
+	: _fd(fd), _discardingLine(false),
 	  _passwordAccepted(false), _isRegistered(false)
 {
 }
@@ -38,20 +38,18 @@ void Client::appendToBuffer(const char *data, size_t len)
 	size_t start = 0;
 
 	// An over-long line was cut in a previous receive: skip what is left of
-	// it, up to and including its CRLF, before reading commands again. The
-	// terminator may be split between two recv(), hence _discardedCR.
+	// it, up to and including the LF that ends it, before reading commands
+	// again. Only the LF has to be found, so a terminator split between two
+	// recv() needs no special care here.
 	if (_discardingLine)
 	{
 		while (start < len)
 		{
-			char current = data[start++];
-			if (_discardedCR && current == '\n')
+			if (data[start++] == '\n')
 			{
 				_discardingLine = false;
-				_discardedCR = false;
 				break;
 			}
-			_discardedCR = current == '\r';
 		}
 		if (_discardingLine)
 			return;
@@ -63,18 +61,17 @@ void Client::appendToBuffer(const char *data, size_t len)
 	// whether each of them is short enough to be executed. Only the
 	// unterminated tail could grow without end, so it is the one cut here,
 	// and cutting it is what keeps the buffer bounded.
-	std::string::size_type lastEnd = _receiveBuffer.rfind("\r\n");
-	std::string::size_type lineStart = lastEnd == std::string::npos ? 0 : lastEnd + 2;
+	std::string::size_type lastEnd = _receiveBuffer.rfind('\n');
+	std::string::size_type lineStart = lastEnd == std::string::npos ? 0 : lastEnd + 1;
 	size_t lineSize = _receiveBuffer.size() - lineStart;
 
-	// A CR at the very end may still turn out to be the first half of the
-	// terminator, so it does not count as content yet.
+	// A CR at the very end may still turn out to be the first half of a
+	// CRLF terminator, so it does not count as content yet.
 	if (lineSize > 0 && _receiveBuffer[_receiveBuffer.size() - 1] == '\r')
 		--lineSize;
 
 	if (lineSize > MAX_IRC_LINE_CONTENT)
 	{
-		_discardedCR = _receiveBuffer[_receiveBuffer.size() - 1] == '\r';
 		_receiveBuffer.erase(lineStart);
 		_discardingLine = true;
 	}
@@ -89,21 +86,27 @@ bool Client::extractLine(std::string &line)
 {
 	while (true)
 	{
-		std::string::size_type pos = _receiveBuffer.find("\r\n");
+		std::string::size_type pos = _receiveBuffer.find('\n');
 		if (pos == std::string::npos)
 			return false;
 
-		if (pos > MAX_IRC_LINE_CONTENT)
+		// The LF ends the line either way; a CRLF terminator just leaves its
+		// CR right before it, and that CR is not part of the message.
+		std::string::size_type end = pos;
+		if (end > 0 && _receiveBuffer[end - 1] == '\r')
+			--end;
+
+		if (end > MAX_IRC_LINE_CONTENT)
 		{
 			// Too long to be a valid IRC message. Drop this line alone and
 			// carry on with the next one: the same packet may well hold
 			// perfectly valid commands both before and after it.
-			_receiveBuffer.erase(0, pos + 2);
+			_receiveBuffer.erase(0, pos + 1);
 			continue;
 		}
 
-		line = _receiveBuffer.substr(0, pos);
-		_receiveBuffer.erase(0, pos + 2);
+		line = _receiveBuffer.substr(0, end);
+		_receiveBuffer.erase(0, pos + 1);
 		return true;
 	}
 }
