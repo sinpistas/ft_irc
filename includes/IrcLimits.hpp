@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 14:50:13 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 20:56:12 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 21:42:58 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -21,6 +21,8 @@
 static const std::string::size_type IRC_MESSAGE_MAX_SIZE = 512;
 // ...which leaves 510 for the message itself.
 static const std::string::size_type IRC_MESSAGE_MAX_CONTENT = IRC_MESSAGE_MAX_SIZE - 2;
+// RFC 2812 2.3.1: at most 14 middle parameters and one trailing parameter.
+static const std::string::size_type IRC_MESSAGE_MAX_PARAMS = 15;
 
 // RFC 2812, section 1.2.1. Should the reference client turn out to need
 // longer nicknames, this is the one line to change.

@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   IrcMessage.hpp                                     :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/28 14:44:29 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/09 14:45:58 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/13 21:42:56 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -26,8 +26,11 @@ struct IrcMessage
 	std::vector<std::string> params;
 
 	// Parse a single line (without the trailing "\r\n") into `out`.
-	// Returns false for syntactically invalid input (missing command, empty
-	// prefix, empty line...) without throwing; `out` is left cleared.
+	// Syntax errors return false and leave `out` cleared. NUL, CR and LF
+	// are forbidden inside this already framed line. After 14 parameters,
+	// the remainder is the 15th, with or without a leading colon.
+	// Allocation failures propagate to the server's per-client handler;
+	// `out` also stays cleared if parsing cannot finish for that reason.
 	static bool parse(const std::string &line, IrcMessage &out);
 };
 
