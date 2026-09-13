@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 22:31:01 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 22:36:30 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -413,6 +413,13 @@ void Server::handleTopic(Client &client, const IrcMessage &msg)
 
 void Server::processMessage(Client &client, const IrcMessage &msg)
 {
+	// A client-supplied prefix may only be this connection's registered
+	// nickname (RFC 2812 2.3). Discard the whole command if it is not;
+	// ignoring just the prefix would still execute an invalid request.
+	if (!msg.prefix.empty() && (!client.isRegistered()
+		|| !areSameNicknames(msg.prefix, client.getNickname())))
+		return;
+
 	// Registration commands are the only commands accepted before welcome (001).
 	// QUIT is allowed before registration too: a client that gives up half
 	// way through should be able to say so and leave, not be told that it
