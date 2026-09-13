@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 20:39:14 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 20:56:08 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -54,8 +54,9 @@ class Server
 		bool receiveFromClient(int fd);
 		// Pull every complete "\r\n"-terminated line out of a client's buffer.
 		void extractCompleteLines(int fd);
-		// Queue a line for a client, appending "\r\n" exactly once.
-		void queueMessage(int fd, const std::string &message);
+		// Queue a line, appending CRLF once. Only callers sending free text
+		// may allow its trailing parameter to be shortened to fit 512 bytes.
+		void queueMessage(int fd, const std::string &message, bool truncateText = false);
 		// Write once after POLLOUT, preserving unsent bytes for the next event;
 		// false means the client must be removed.
 		bool sendToClient(int fd);

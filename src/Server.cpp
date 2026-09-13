@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 20:39:12 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 20:56:14 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -105,9 +105,25 @@ static bool isValidChannelName(const std::string &name)
 static std::string safeParameter(const std::string &value)
 {
 	const std::string token = value.substr(0, value.find(' '));
-	if (token.empty() || token[0] == ':')
+	if (token.empty() || token[0] == ':'
+		|| token.size() > IRC_REPLY_PARAMETER_MAX_LENGTH)
 		return "*";
 	return token;
+}
+
+static bool isValidUsername(const std::string &username)
+{
+	if (username.empty())
+		return false;
+	// RFC 2812 2.3.1 <user>. Validate the whole input before shortening it,
+	// so an invalid byte beyond the stored portion is not hidden.
+	for (std::string::size_type i = 0; i < username.size(); ++i)
+	{
+		if (username[i] == '\0' || username[i] == '\r' || username[i] == '\n'
+			|| username[i] == ' ' || username[i] == '@')
+			return false;
+	}
+	return true;
 }
 
 static bool isNicknameSpecial(char character)
@@ -440,10 +456,10 @@ void Server::processMessage(Client &client, const IrcMessage &msg)
 		{
 			// Saying nothing is the worst possible answer: the client cannot
 			// tell "the server does not know this command" from "it ran and
-			// did nothing". The parser has already checked that a command is
-			// letters or three digits, so it is safe to echo back as it is.
+			// did nothing". Bound the echoed command too: even a syntactically
+			// valid token can be too long to fit in a numeric reply.
 			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-				+ " 421 " + client.getNickname() + " " + msg.command
+				+ " 421 " + client.getNickname() + " " + safeParameter(msg.command)
 				+ " :Unknown command");
 		}
 }
@@ -551,7 +567,7 @@ void Server::updateClientPollEvents(int fd)
 	}
 }
 
-void Server::queueMessage(int fd, const std::string &message)
+void Server::queueMessage(int fd, const std::string &message, bool truncateText)
 {
 	std::map<int, Client>::iterator it = _clients.find(fd);
 	if (it == _clients.end() || it->second.hasMemoryFailure())
@@ -566,11 +582,20 @@ void Server::queueMessage(int fd, const std::string &message)
 			&& line[line.size() - 1] == '\n')
 			line.erase(line.size() - 2);
 
-		// Every reply leaves through here, so this is the one place where the
-		// server can promise it never puts a line on the wire that is longer
-		// than the 512 bytes it demands from its own clients.
+		// Preserve prefix, command and targets. A trailing parameter is not
+		// necessarily free text (JOIN and NICK use it for identities), so
+		// shortening requires explicit permission from the caller as well.
 		if (line.size() > IRC_MESSAGE_MAX_CONTENT)
+		{
+			const std::string::size_type trailing = line.find(" :");
+			if (!truncateText || trailing == std::string::npos
+				|| trailing + 2 >= IRC_MESSAGE_MAX_CONTENT)
+			{
+				std::cerr << "Cannot queue oversized IRC message for fd " << fd << std::endl;
+				return;
+			}
 			line.erase(IRC_MESSAGE_MAX_CONTENT);
+		}
 
 		// And it is also the one place that can tell when a client has stopped
 		// taking what it is sent. The queue only grows when the socket refuses
@@ -764,7 +789,7 @@ void Server::broadcastQuit(const Client &client)
 	const std::string notification =
 		":" + client.getPrefix() + " QUIT :" + client.getQuitReason();
 	for (std::set<int>::const_iterator it = recipients.begin(); it != recipients.end(); ++it)
-		queueMessage(*it, notification);
+		queueMessage(*it, notification, true);
 }
 
 void Server::removeClient(int fd)
@@ -1081,7 +1106,15 @@ void Server::handleUser(Client &client, const IrcMessage &msg)
 		return;
 	}
 
-	client.setUsername(msg.params[0]);
+	if (!isValidUsername(msg.params[0]))
+	{
+		queueMessage(client.getFd(), "ERROR :Closing Link: "
+			+ client.getHostname() + " (Invalid username)");
+		markForRemoval(client.getFd());
+		return;
+	}
+
+	client.setUsername(msg.params[0].substr(0, IRC_USERNAME_MAX_LENGTH));
 	client.setRealname(msg.params[3]);
 
 	// NICK and USER may arrive in either order after PASS.
@@ -1176,7 +1209,7 @@ void Server::sendJoinReplies(const Client &client, const Channel &channel)
 	// who asked for the topic, not part of welcoming anyone into a channel.
 	if (!channel.getTopic().empty())
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-			+ " 332 " + target + " :" + channel.getTopic());
+			+ " 332 " + target + " :" + channel.getTopic(), true);
 
 	const std::string namesPrefix = std::string(":") + SERVER_NAME + " 353 "
 		+ client.getNickname() + " = " + channel.getName() + " :";
@@ -1255,7 +1288,7 @@ void Server::handlePart(Client &client, const IrcMessage &msg)
 		const std::set<int> &members = channel->second.getMembers();
 		for (std::set<int>::const_iterator member = members.begin();
 			member != members.end(); ++member)
-			queueMessage(*member, notification);
+			queueMessage(*member, notification, true);
 
 		// Takes the name by value, which matters here: the call may erase the
 		// very channel whose name is being handed over.
@@ -1389,7 +1422,7 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 			{
 				// Nobody is sent back what they just said.
 				if (*member != client.getFd())
-					queueMessage(*member, line);
+					queueMessage(*member, line, true);
 			}
 		}
 		else
@@ -1406,7 +1439,7 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 			}
 
 			queueMessage(target->first, ":" + client.getPrefix() + " PRIVMSG "
-				+ target->second.getNickname() + text);
+				+ target->second.getNickname() + text, true);
 		}
 	}
 }
@@ -1428,7 +1461,7 @@ void Server::handleQuit(Client &client, const IrcMessage &msg)
 	// is the last thing this client will be sent, and it does arrive: a
 	// client on its way out is held on to until its queue has drained.
 	queueMessage(client.getFd(), "ERROR :Closing Link: " + client.getHostname()
-		+ " (Quit: " + reason + ")");
+		+ " (Quit: " + reason + ")", true);
 
 	// Everything that is left -- telling the channels, leaving them, closing
 	// the socket -- is what removing a client does anyway, so it is done
