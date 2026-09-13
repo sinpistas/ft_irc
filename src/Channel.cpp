@@ -37,9 +37,9 @@ void Channel::removeMode(char mode)
 }
 bool Channel::hasMode(char mode) const
 {
-	if (this->_modes.find(mode) != '\n')
-		return 1;
-	return 0;	
+	// find() reports "not found" with npos, never with a character value:
+	// comparing it against '\n' made every mode look as if it were set.
+	return this->_modes.find(mode) != std::string::npos;
 }
 
 void Channel::setTopic(const std::string &topic)
