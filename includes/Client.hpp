@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:35:20 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 13:43:06 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -29,16 +29,20 @@ class Client
 		// Return the descriptor associated with this connection.
 		int getFd() const;
 
-		// Preserve received data, allowing at most 512 bytes per line including
-		// CRLF. Return false without appending if any line exceeds the limit.
-		bool appendToBuffer(const char *data, size_t len);
+		// Preserve received data. An IRC message may occupy 512 bytes at most,
+		// CRLF included; a line longer than that is dropped on its own, without
+		// closing the connection and without touching the other lines that
+		// arrived in the same packet.
+		void appendToBuffer(const char *data, size_t len);
 		// Expose the accumulated data without copying it.
 		const std::string &getBuffer() const;
 
 		// If the buffer holds a complete "\r\n"-terminated line, remove it
 		// from the buffer and return it (without the "\r\n") in `line`.
-		// Returns false, leaving the buffer untouched, when no full line
-		// is available yet.
+		// Complete lines that are over the IRC length limit are discarded on
+		// the way, so `line` only ever holds a message the parser may accept.
+		// Returns false, with no line to report, when the buffer holds no
+		// full line yet.
 		bool extractLine(std::string &line);
 
 		// Queue raw bytes to be flushed to the socket later.
@@ -90,6 +94,11 @@ class Client
 
 		int         _fd;
 		std::string _receiveBuffer;
+		// Set while the remains of an over-long line are being skipped, up to
+		// and including its CRLF; _discardedCR remembers a CR dropped at the
+		// very end of a packet, whose LF is still to come.
+		bool        _discardingLine;
+		bool        _discardedCR;
 		std::string _sendBuffer;
 		
 		std::string  _nickname;           // For NICK command

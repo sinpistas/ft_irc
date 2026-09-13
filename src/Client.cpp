@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 18:52:18 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 13:43:04 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,9 +14,13 @@
 #include "IrcCaseMapping.hpp"
 
 static const size_t MAX_IRC_LINE_SIZE = 512;
+// Those 512 bytes include the terminating CRLF, so the message itself is
+// allowed 510 at most.
+static const size_t MAX_IRC_LINE_CONTENT = MAX_IRC_LINE_SIZE - 2;
 
 Client::Client(int fd)
-	: _fd(fd), _passwordAccepted(false), _isRegistered(false)
+	: _fd(fd), _discardingLine(false), _discardedCR(false),
+	  _passwordAccepted(false), _isRegistered(false)
 {
 }
 
@@ -29,33 +33,51 @@ int Client::getFd() const
 	return _fd;
 }
 
-bool Client::appendToBuffer(const char *data, size_t len)
+void Client::appendToBuffer(const char *data, size_t len)
 {
-	// Continue counting the unfinished line from the previous receive.
-	std::string::size_type lastEnd = _receiveBuffer.rfind("\r\n");
-	size_t lineSize = lastEnd == std::string::npos
-		? _receiveBuffer.size() : _receiveBuffer.size() - lastEnd - 2;
-	bool previousWasCR = !_receiveBuffer.empty()
-		&& _receiveBuffer[_receiveBuffer.size() - 1] == '\r';
+	size_t start = 0;
 
-	// Validate before allocating. Each complete line gets its own limit,
-	// even when several commands arrive in the same recv().
-	for (size_t i = 0; i < len; ++i)
+	// An over-long line was cut in a previous receive: skip what is left of
+	// it, up to and including its CRLF, before reading commands again. The
+	// terminator may be split between two recv(), hence _discardedCR.
+	if (_discardingLine)
 	{
-		++lineSize;
-		if (previousWasCR && data[i] == '\n')
-			lineSize = 0;
-		else if (lineSize > MAX_IRC_LINE_SIZE - 2)
+		while (start < len)
 		{
-			// At byte 511 only CR is allowed: LF may arrive in the next recv().
-			if (lineSize != MAX_IRC_LINE_SIZE - 1 || data[i] != '\r')
-				return false;
+			char current = data[start++];
+			if (_discardedCR && current == '\n')
+			{
+				_discardingLine = false;
+				_discardedCR = false;
+				break;
+			}
+			_discardedCR = current == '\r';
 		}
-		previousWasCR = data[i] == '\r';
+		if (_discardingLine)
+			return;
 	}
 
-	_receiveBuffer.append(data, len);
-	return true;
+	_receiveBuffer.append(data + start, len - start);
+
+	// Complete lines are left alone here: extractLine() is what decides
+	// whether each of them is short enough to be executed. Only the
+	// unterminated tail could grow without end, so it is the one cut here,
+	// and cutting it is what keeps the buffer bounded.
+	std::string::size_type lastEnd = _receiveBuffer.rfind("\r\n");
+	std::string::size_type lineStart = lastEnd == std::string::npos ? 0 : lastEnd + 2;
+	size_t lineSize = _receiveBuffer.size() - lineStart;
+
+	// A CR at the very end may still turn out to be the first half of the
+	// terminator, so it does not count as content yet.
+	if (lineSize > 0 && _receiveBuffer[_receiveBuffer.size() - 1] == '\r')
+		--lineSize;
+
+	if (lineSize > MAX_IRC_LINE_CONTENT)
+	{
+		_discardedCR = _receiveBuffer[_receiveBuffer.size() - 1] == '\r';
+		_receiveBuffer.erase(lineStart);
+		_discardingLine = true;
+	}
 }
 
 const std::string &Client::getBuffer() const
@@ -65,13 +87,25 @@ const std::string &Client::getBuffer() const
 
 bool Client::extractLine(std::string &line)
 {
-	std::string::size_type pos = _receiveBuffer.find("\r\n");
-	if (pos == std::string::npos)
-		return false;
+	while (true)
+	{
+		std::string::size_type pos = _receiveBuffer.find("\r\n");
+		if (pos == std::string::npos)
+			return false;
 
-	line = _receiveBuffer.substr(0, pos);
-	_receiveBuffer.erase(0, pos + 2);
-	return true;
+		if (pos > MAX_IRC_LINE_CONTENT)
+		{
+			// Too long to be a valid IRC message. Drop this line alone and
+			// carry on with the next one: the same packet may well hold
+			// perfectly valid commands both before and after it.
+			_receiveBuffer.erase(0, pos + 2);
+			continue;
+		}
+
+		line = _receiveBuffer.substr(0, pos);
+		_receiveBuffer.erase(0, pos + 2);
+		return true;
+	}
 }
 
 void Client::appendToSendBuffer(const std::string &data)
