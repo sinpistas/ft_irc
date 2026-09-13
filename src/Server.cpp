@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 18:39:59 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 18:54:03 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -417,6 +417,8 @@ void Server::processMessage(Client &client, const IrcMessage &msg)
 			handleJoin(client, msg);
 		else if (msg.command == "PART")
 			handlePart(client, msg);
+		else if (msg.command == "INVITE")
+			handleInvite(client, msg);
 		else if (msg.command == "PRIVMSG")
 			handlePrivmsg(client, msg);
 		else if (msg.command == "QUIT")
@@ -457,6 +459,16 @@ bool Server::isValidNickname(const std::string &nickname) const
 		return false;
 	}
 	return true;
+}
+
+std::map<int, Client>::iterator Server::findClientByNickname(const std::string &nickname)
+{
+	for (std::map<int, Client>::iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		if (areSameNicknames(it->second.getNickname(), nickname))
+			return it;
+	}
+	return _clients.end();
 }
 
 bool Server::isNicknameInUse(const std::string &nickname, int ignoredFd) const
@@ -686,6 +698,9 @@ void Server::removeFromAllChannels(Client &client)
 	{
 		// removeFromChannel() may erase the entry, so step past it first.
 		std::map<std::string, Channel>::iterator current = it++;
+		// An invitation must not outlive the client holding it: descriptors
+		// get reused, and the next owner of this one was invited to nothing.
+		current->second.removeInvite(client.getFd());
 		if (current->second.hasMember(client.getFd()))
 			removeFromChannel(client, current->first);
 	}
@@ -1063,7 +1078,21 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 
 		const std::string &channelName = channel->second.getName();
 
+		// An invite-only channel is entered with an invitation and not
+		// otherwise. The check is live, but it cannot fire yet: no channel
+		// can be +i until MODE starts storing modes.
+		if (!created && channel->second.hasMode('i')
+			&& !channel->second.isInvited(client.getFd()))
+		{
+			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+				+ " 473 " + client.getNickname() + " " + channelName
+				+ " :Cannot join channel (+i)");
+			continue;
+		}
+
 		addToChannel(client, channel->second);
+		// The invitation has done its job.
+		channel->second.removeInvite(client.getFd());
 		// Whoever brings a channel into being is left in charge of it.
 		if (created)
 			channel->second.addOperator(client.getFd());
@@ -1176,6 +1205,74 @@ void Server::handlePart(Client &client, const IrcMessage &msg)
 		// very channel whose name is being handed over.
 		removeFromChannel(client, channel->second.getName());
 	}
+}
+
+void Server::handleInvite(Client &client, const IrcMessage &msg)
+{
+	if (msg.params.size() < 2 || msg.params[0].empty() || msg.params[1].empty())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 461 " + client.getNickname() + " INVITE :Not enough parameters");
+		return;
+	}
+
+	const std::string &targetNick = msg.params[0];
+	const std::string &channelName = msg.params[1];
+
+	std::map<int, Client>::iterator target = findClientByNickname(targetNick);
+	if (target == _clients.end())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 401 " + client.getNickname() + " " + safeParameter(targetNick)
+			+ " :No such nick/channel");
+		return;
+	}
+
+	// RFC 2812 3.2.7: the channel need not exist. When it does, its rules
+	// apply -- only its members may invite anyone into it, and only its
+	// operators may do so while it is invite-only.
+	std::map<std::string, Channel>::iterator channel =
+		_channels.find(normalizeIrcName(channelName));
+	std::string shownChannel = safeParameter(channelName);
+
+	if (channel != _channels.end())
+	{
+		shownChannel = channel->second.getName();
+
+		if (!channel->second.hasMember(client.getFd()))
+		{
+			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+				+ " 442 " + client.getNickname() + " " + shownChannel
+				+ " :You're not on that channel");
+			return;
+		}
+
+		if (channel->second.hasMember(target->first))
+		{
+			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+				+ " 443 " + client.getNickname() + " "
+				+ target->second.getNickname() + " " + shownChannel
+				+ " :is already on channel");
+			return;
+		}
+
+		if (channel->second.hasMode('i') && !channel->second.isOperator(client.getFd()))
+		{
+			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+				+ " 482 " + client.getNickname() + " " + shownChannel
+				+ " :You're not channel operator");
+			return;
+		}
+
+		channel->second.addInvite(target->first);
+	}
+
+	// Only these two hear about it: an invitation is not channel news.
+	queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 341 "
+		+ client.getNickname() + " " + target->second.getNickname()
+		+ " " + shownChannel);
+	queueMessage(target->first, ":" + client.getPrefix() + " INVITE "
+		+ target->second.getNickname() + " :" + shownChannel);
 }
 
 void Server::handlePrivmsg(Client &client, const IrcMessage &msg)

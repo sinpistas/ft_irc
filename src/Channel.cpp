@@ -61,6 +61,19 @@ const std::string &Channel::getModes() const
 	return this->_modes;
 }
 
+void Channel::addInvite(int fd)
+{
+	this->_invited.insert(fd);
+}
+void Channel::removeInvite(int fd)
+{
+	this->_invited.erase(fd);
+}
+bool Channel::isInvited(int fd) const
+{
+	return this->_invited.find(fd) != this->_invited.end();
+}
+
 void Channel::addOperator(int fd)
 {
 	if (hasMember(fd))

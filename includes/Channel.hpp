@@ -36,6 +36,14 @@ class Channel
 		const std::set<int> &getMembers() const;
 		bool isEmpty() const;
 
+		// Standing invitations. They only decide anything while the channel
+		// is invite-only: on any other channel an invitation is just a
+		// message. An invitation is used up when its holder joins, and goes
+		// away with them if they disconnect first.
+		void addInvite(int fd);
+		void removeInvite(int fd);
+		bool isInvited(int fd) const;
+
 		void addOperator(int fd);
 		void removeOperator(int fd);
 		bool isOperator(int fd) const;
@@ -47,6 +55,7 @@ class Channel
 		std::string _modes;
 		std::set<int> _members;
 		std::set<int> _operators;
+		std::set<int> _invited;
 };
 
 #endif

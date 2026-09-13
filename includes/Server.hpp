@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 18:05:47 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 18:54:01 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -94,12 +94,16 @@ class Server
 		void processMessage(Client &client, const IrcMessage &msg);
 		bool isValidNickname(const std::string &nickname) const;
 		bool isNicknameInUse(const std::string &nickname, int ignoredFd) const;
+		// The client answering to this nickname, or _clients.end() if nobody
+		// does. Nicknames are compared the way IRC compares them.
+		std::map<int, Client>::iterator findClientByNickname(const std::string &nickname);
 	
 		void handlePass(Client &client, const IrcMessage &msg);
 		void handleNick(Client &client, const IrcMessage &msg);
 		void handleUser(Client &client, const IrcMessage &msg);
 		void handleJoin(Client &client, const IrcMessage &msg);
 		void handlePart(Client &client, const IrcMessage &msg);
+		void handleInvite(Client &client, const IrcMessage &msg);
 		// Send the topic and member list to a client after a successful JOIN.
 		void sendJoinReplies(const Client &client, const Channel &channel);
 		void handlePrivmsg(Client &client, const IrcMessage &msg);
