@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Server.cpp                                         :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/11 17:10:59 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/13 13:14:40 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -357,8 +357,12 @@ void Server::extractCompleteLines(int fd)
 	if (it == _clients.end())
 		return;
 
+	// A handler may mark this client for removal. Nothing is erased before
+	// the end of the poll() pass, so `it` stays valid, but the rest of the
+	// lines it had buffered must not be executed on a connection that is
+	// already closing.
 	std::string line;
-	while (it->second.extractLine(line))
+	while (!isMarkedForRemoval(fd) && it->second.extractLine(line))
 	{
 		// Temporary: parse and print here until command dispatch exists.
 		// A syntax error only discards this one line, the client stays connected.
@@ -449,6 +453,32 @@ bool Server::sendToClient(int fd)
 	return true;
 }
 
+void Server::markForRemoval(int fd)
+{
+	// Only ever records the descriptor: erasing here would invalidate the
+	// iterators and indices that the read loop and the poll loop are using.
+	if (_clients.find(fd) != _clients.end())
+		_pendingRemoval.insert(fd);
+}
+
+bool Server::isMarkedForRemoval(int fd) const
+{
+	return _pendingRemoval.find(fd) != _pendingRemoval.end();
+}
+
+void Server::removePendingClients()
+{
+	// Take the whole set aside first: removeClient() must be free to mark
+	// another client (a broadcast to a peer that is gone, for instance)
+	// without modifying the container being iterated here. Anything marked
+	// during this call is simply handled in the next pass.
+	std::set<int> pending;
+	pending.swap(_pendingRemoval);
+
+	for (std::set<int>::const_iterator it = pending.begin(); it != pending.end(); ++it)
+		removeClient(*it);
+}
+
 void Server::removeClient(int fd)
 {
 	// Remove channel membership before close() allows this fd to be reused.
@@ -508,10 +538,6 @@ void Server::pollLoop()
 		// pass; acceptNewClients() may push_back() new client entries, which
 		// must wait for the next poll() call instead of being processed now.
 		size_t count = _pollFds.size();
-		// Every fd collected here is removed after the loop: removeClient()
-		// erases from _pollFds, which would invalidate the indices/iterators
-		// this loop is still using if called mid-pass.
-		std::vector<int> toRemove;
 
 		for (size_t i = 0; i < count; ++i)
 		{
@@ -539,18 +565,20 @@ void Server::pollLoop()
 
 			extractCompleteLines(fd);
 
-			// Only try to flush output if the client is still there; no point
-			// writing to a connection we already know is gone.
-			if (stillConnected && (revents & POLLOUT))
+			// Only try to flush output if the client is still there and no
+			// handler decided to close it; no point writing to a connection we
+			// already know is gone, or that is about to be.
+			if (stillConnected && !isMarkedForRemoval(fd) && (revents & POLLOUT))
 				stillConnected = sendToClient(fd);
 
 			if (!stillConnected || (revents & (POLLERR | POLLNVAL))
 				|| ((revents & POLLHUP) && !(revents & POLLIN)))
-				toRemove.push_back(fd);
+				markForRemoval(fd);
 		}
 
-		for (std::vector<int>::iterator it = toRemove.begin(); it != toRemove.end(); ++it)
-			removeClient(*it);
+		// The single point where clients are erased: removeClient() modifies
+		// _clients and _pollFds, which the loop above is still indexing.
+		removePendingClients();
 	}
 }
 

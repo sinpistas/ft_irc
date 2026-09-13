@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/10 19:20:24 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 13:14:43 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <poll.h>
 #include "Client.hpp"
 #include "Channel.hpp"
@@ -57,6 +58,15 @@ class Server
 		bool sendToClient(int fd);
 		// Sync a client's pollfd events with whether it has pending output.
 		void updateClientPollEvents(int fd);
+		// Mark a client as "must be disconnected" without touching any
+		// container. Command handlers must call this instead of removeClient():
+		// while a handler runs, both extractCompleteLines() and pollLoop() are
+		// still holding an iterator/index into _clients and _pollFds.
+		void markForRemoval(int fd);
+		bool isMarkedForRemoval(int fd) const;
+		// Disconnect every client marked during this pass. Called from one
+		// single place, once both loops above are done with their iterators.
+		void removePendingClients();
 		// Remove channel membership, then close the fd and erase the client.
 		void removeClient(int fd);
 		// Watch every monitored descriptor with poll() and report activity.
@@ -87,6 +97,8 @@ class Server
 		std::vector<struct pollfd> _pollFds;
 		// Connected clients, keyed by their fd.
 		std::map<int, Client>     _clients;
+		// Clients to disconnect at the end of the current poll() pass.
+		std::set<int>             _pendingRemoval;
 		// Channel keys use normalizeIrcName() so all spellings share one entry.
 		std::map<std::string, Channel> _channels;
 };
