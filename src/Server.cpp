@@ -1427,8 +1427,8 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 			if (channel == _channels.end())
 			{
 				queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-					+ " 403 " + client.getNickname() + " " + safeParameter(*it)
-					+ " :No such channel");
+					+ " 401 " + client.getNickname() + " " + safeParameter(*it)
+					+ " :No such nick/channel");
 				continue;
 			}
 
