@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:15:31 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:24:06 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -71,6 +71,11 @@ class Client
 		const std::string &getUsername() const;
 		void setRealname(const std::string &name);
 		const std::string &getRealname() const;
+		// What the other clients are told when this one goes away. Stays at
+		// its default unless a QUIT command replaces it with the user's own
+		// message, which is why it is read at removal time and not earlier.
+		void setQuitReason(const std::string &reason);
+		const std::string &getQuitReason() const;
 
 
 		// PASS acceptance and completed registration are separate states.
@@ -113,6 +118,7 @@ class Client
 		std::string  _nickname;           // For NICK command
 		std::string  _username;           // For USER command
 		std::string  _realname;           // For USER command
+		std::string  _quitReason;
 		std::set<std::string> _channels;  // For JOIN/KICK commands
 		std::string  _modes;              // For MODE command (e.g., "io" for invisible+operator)
 		bool         _passwordAccepted;

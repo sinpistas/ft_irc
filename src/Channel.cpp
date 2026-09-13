@@ -89,6 +89,10 @@ void Channel::removeMember(int fd)
 	// Channel privileges must not survive the member's departure.
 	this->_operators.erase(fd);
 }
+const std::set<int> &Channel::getMembers() const
+{
+	return this->_members;
+}
 bool Channel::isEmpty() const
 {
 	return this->_members.empty();

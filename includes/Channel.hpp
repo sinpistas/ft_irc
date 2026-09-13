@@ -29,6 +29,8 @@ class Channel
 		// Remove membership and any operator privileges for this descriptor.
 		void removeMember(int fd);
 		bool hasMember(int fd) const;
+		// Every member's descriptor, for broadcasting to the whole channel.
+		const std::set<int> &getMembers() const;
 		bool isEmpty() const;
 
 		void addOperator(int fd);

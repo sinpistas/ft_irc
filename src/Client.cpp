@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:15:30 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:24:10 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -20,6 +20,7 @@ static const size_t MAX_IRC_LINE_CONTENT = MAX_IRC_LINE_SIZE - 2;
 
 Client::Client(int fd, const std::string &hostname)
 	: _fd(fd), _hostname(hostname), _discardingLine(false),
+	  _quitReason("Connection closed"),
 	  _passwordAccepted(false), _isRegistered(false)
 {
 }
@@ -167,6 +168,14 @@ void Client::setRealname(const std::string &name)
 const std::string &Client::getRealname() const
 {
 	return _realname;
+}
+void Client::setQuitReason(const std::string &reason)
+{
+	_quitReason = reason;
+}
+const std::string &Client::getQuitReason() const
+{
+	return _quitReason;
 }
 void Client::setPasswordAccepted(bool accepted)
 {

@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:02:46 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:24:08 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -76,6 +76,9 @@ class Server
 		void removeFromChannel(Client &client, std::string channelName);
 		// Take a client out of every channel before it is destroyed.
 		void removeFromAllChannels(Client &client);
+		// Tell everyone sharing a channel with this client that it is leaving.
+		// Must run before it is taken out of its channels.
+		void broadcastQuit(const Client &client);
 		// Remove channel membership, then close the fd and erase the client.
 		void removeClient(int fd);
 		// Watch every monitored descriptor with poll() and report activity.

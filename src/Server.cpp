@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:15:29 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:24:11 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -533,12 +533,45 @@ void Server::removeFromAllChannels(Client &client)
 	}
 }
 
+void Server::broadcastQuit(const Client &client)
+{
+	// An unregistered client has no name to announce and has joined nothing.
+	if (!client.isRegistered())
+		return;
+
+	// Collect the peers while the client is still in its channels: once it
+	// is out of them, there is no way left to know who shared one with it.
+	std::set<int> recipients;
+	for (std::map<std::string, Channel>::const_iterator it = _channels.begin();
+		it != _channels.end(); ++it)
+	{
+		if (!it->second.hasMember(client.getFd()))
+			continue;
+		const std::set<int> &members = it->second.getMembers();
+		recipients.insert(members.begin(), members.end());
+	}
+
+	// A set gives each peer exactly one notification, however many channels
+	// they had in common. The one leaving is not among them.
+	recipients.erase(client.getFd());
+
+	const std::string notification =
+		":" + client.getPrefix() + " QUIT :" + client.getQuitReason();
+	for (std::set<int>::const_iterator it = recipients.begin(); it != recipients.end(); ++it)
+		queueMessage(*it, notification);
+}
+
 void Server::removeClient(int fd)
 {
-	// Leave every channel before close() allows this fd to be reused.
 	std::map<int, Client>::iterator clientIt = _clients.find(fd);
 	if (clientIt != _clients.end())
+	{
+		// Announce first, leave the channels second: the announcement needs
+		// the memberships that the next call is about to undo.
+		broadcastQuit(clientIt->second);
+		// Leave every channel before close() allows this fd to be reused.
 		removeFromAllChannels(clientIt->second);
+	}
 
 	for (std::vector<struct pollfd>::iterator it = _pollFds.begin(); it != _pollFds.end(); ++it)
 	{
