@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 18:54:03 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 19:41:32 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -1079,8 +1079,7 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 		const std::string &channelName = channel->second.getName();
 
 		// An invite-only channel is entered with an invitation and not
-		// otherwise. The check is live, but it cannot fire yet: no channel
-		// can be +i until MODE starts storing modes.
+		// otherwise.
 		if (!created && channel->second.hasMode('i')
 			&& !channel->second.isInvited(client.getFd()))
 		{
@@ -1277,65 +1276,82 @@ void Server::handleInvite(Client &client, const IrcMessage &msg)
 
 void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 {
-	if (msg.params.size() < 2)
+	// RFC 2812 3.3.1: PRIVMSG <msgtarget> <text to be sent>. Each of the two
+	// missing has its own answer.
+	if (msg.params.empty() || msg.params[0].empty())
 	{
-		std::cout << "Not enough parameters" << std::endl;
-		return ;
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 411 " + client.getNickname() + " :No recipient given (PRIVMSG)");
+		return;
+	}
+	if (msg.params.size() < 2 || msg.params[1].empty())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 412 " + client.getNickname() + " :No text to send");
+		return;
 	}
 
-	std::string target = normalizeIrcName(msg.params[0]);
-	std::string msgprint;
+	// The text travels as the trailing parameter, behind its own colon. That
+	// colon is what tells the receiving client where the message begins and
+	// what lets it hold spaces: without it, everything past the first word
+	// arrives as separate parameters and the client shows a single word.
+	const std::string text = " :" + msg.params[1];
 
-	// Example MSG: :Wardog_E!wardoge@localhost PRIVMSG adios :hola
-
-	msgprint = ":" + client.getNickname() + "!" + client.getUsername() + " " + "PRIVMSG " + target;
-	for (std::vector<std::string>::const_iterator it = msg.params.begin(); it != msg.params.end(); ++it)
+	// A message may be addressed to several targets at once, separated by
+	// commas. Each one is resolved, and fails, on its own.
+	const std::vector<std::string> targets = splitOnCommas(msg.params[0]);
+	for (std::vector<std::string>::const_iterator it = targets.begin();
+		it != targets.end(); ++it)
 	{
-		msgprint += " ";
-		if(it == msg.params.begin())
-			++it;
-		msgprint += *it;
-	}
-
-	if (msg.params[0][0] == '#')
-	{
-		std::map<std::string, Channel>::iterator it = _channels.find(target);
-		if (it != _channels.end())
+		if ((*it)[0] == '#' || (*it)[0] == '&')
 		{
-			Channel &channel = it->second;
-			if (channel.hasMember(client.getFd()))
+			std::map<std::string, Channel>::iterator channel =
+				_channels.find(normalizeIrcName(*it));
+			if (channel == _channels.end())
 			{
-				for (std::map<int, Client>::iterator clientIt = _clients.begin();
-					clientIt != _clients.end(); ++clientIt)
-				{
-					if (clientIt->first != client.getFd()
-						&& channel.hasMember(clientIt->first))
-					{
-						queueMessage(clientIt->first, msgprint);
-						std::cout << "Sending message through channel." << std::endl;
-					}	
-				}
+				queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+					+ " 403 " + client.getNickname() + " " + safeParameter(*it)
+					+ " :No such channel");
+				continue;
+			}
+
+			// Talking to a channel is something its members do.
+			if (!channel->second.hasMember(client.getFd()))
+			{
+				queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+					+ " 404 " + client.getNickname() + " "
+					+ channel->second.getName() + " :Cannot send to channel");
+				continue;
+			}
+
+			const std::string line = ":" + client.getPrefix() + " PRIVMSG "
+				+ channel->second.getName() + text;
+			const std::set<int> &members = channel->second.getMembers();
+			for (std::set<int>::const_iterator member = members.begin();
+				member != members.end(); ++member)
+			{
+				// Nobody is sent back what they just said.
+				if (*member != client.getFd())
+					queueMessage(*member, line);
 			}
 		}
-	}
-	else
-	{
-		std::map<int, Client>::iterator it;
-
-		for (it = _clients.begin(); it != _clients.end(); ++it)
+		else
 		{
-			if (areSameNicknames(it->second.getNickname(), target))
+			// A client that has not finished registering has no name to be
+			// reached by, so as far as anyone else is concerned it is not there.
+			std::map<int, Client>::iterator target = findClientByNickname(*it);
+			if (target == _clients.end() || !target->second.isRegistered())
 			{
-				Client &recipient = it->second;
-				queueMessage(recipient.getFd(), msgprint);
-				std::cout << "Sending private message." << std::endl;
-				break;
+				queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+					+ " 401 " + client.getNickname() + " " + safeParameter(*it)
+					+ " :No such nick/channel");
+				continue;
 			}
+
+			queueMessage(target->first, ":" + client.getPrefix() + " PRIVMSG "
+				+ target->second.getNickname() + text);
 		}
 	}
-
-	std::cout << client.getNickname() << std::endl;
-	std::cout << msg.command << std::endl;
 }
 
 void Server::handleQuit(Client &client, const IrcMessage &msg)
