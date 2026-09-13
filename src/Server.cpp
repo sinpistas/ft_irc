@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 16:25:48 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 16:35:21 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -381,8 +381,16 @@ void Server::processMessage(Client &client, const IrcMessage &msg)
 			handleMode(client, msg);
 		else if (msg.command == "TOPIC")
 			handleTopic(client, msg);
-
-
+		else
+		{
+			// Saying nothing is the worst possible answer: the client cannot
+			// tell "the server does not know this command" from "it ran and
+			// did nothing". The parser has already checked that a command is
+			// letters or three digits, so it is safe to echo back as it is.
+			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+				+ " 421 " + client.getNickname() + " " + msg.command
+				+ " :Unknown command");
+		}
 }
 
 bool Server::isValidNickname(const std::string &nickname) const
