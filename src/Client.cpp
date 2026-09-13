@@ -6,17 +6,13 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:24:10 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:53:28 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Client.hpp"
 #include "IrcCaseMapping.hpp"
-
-static const size_t MAX_IRC_LINE_SIZE = 512;
-// Those 512 bytes include the terminating CRLF, so the message itself is
-// allowed 510 at most.
-static const size_t MAX_IRC_LINE_CONTENT = MAX_IRC_LINE_SIZE - 2;
+#include "IrcLimits.hpp"
 
 Client::Client(int fd, const std::string &hostname)
 	: _fd(fd), _hostname(hostname), _discardingLine(false),
@@ -81,7 +77,7 @@ void Client::appendToBuffer(const char *data, size_t len)
 	if (lineSize > 0 && _receiveBuffer[_receiveBuffer.size() - 1] == '\r')
 		--lineSize;
 
-	if (lineSize > MAX_IRC_LINE_CONTENT)
+	if (lineSize > IRC_MESSAGE_MAX_CONTENT)
 	{
 		_receiveBuffer.erase(lineStart);
 		_discardingLine = true;
@@ -107,7 +103,7 @@ bool Client::extractLine(std::string &line)
 		if (end > 0 && _receiveBuffer[end - 1] == '\r')
 			--end;
 
-		if (end > MAX_IRC_LINE_CONTENT)
+		if (end > IRC_MESSAGE_MAX_CONTENT)
 		{
 			// Too long to be a valid IRC message. Drop this line alone and
 			// carry on with the next one: the same packet may well hold

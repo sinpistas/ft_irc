@@ -6,13 +6,14 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 14:24:11 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 14:53:29 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Server.hpp"
 #include "IrcMessage.hpp"
 #include "IrcCaseMapping.hpp"
+#include "IrcLimits.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <cstring>
@@ -338,7 +339,10 @@ void Server::processMessage(Client &client, const IrcMessage &msg)
 
 bool Server::isValidNickname(const std::string &nickname) const
 {
-	if (nickname.empty())
+	// RFC 2812 caps a nickname at nine characters. Without a cap, a long
+	// enough nickname alone would push the messages announcing it past the
+	// size an IRC message is allowed to have.
+	if (nickname.empty() || nickname.size() > IRC_NICKNAME_MAX_LENGTH)
 		return false;
 
 	for (std::string::size_type i = 0; i < nickname.size(); ++i)
@@ -430,13 +434,20 @@ void Server::queueMessage(int fd, const std::string &message)
 	if (it == _clients.end())
 		return;
 
-	// Append "\r\n" only if the caller did not already include it, so a
-	// message is never queued with the terminator doubled.
-	bool alreadyTerminated = message.size() >= 2
-		&& message[message.size() - 2] == '\r'
-		&& message[message.size() - 1] == '\n';
+	// Strip the terminator a caller may already have added, so the message
+	// is neither measured nor terminated twice.
+	std::string line = message;
+	if (line.size() >= 2 && line[line.size() - 2] == '\r'
+		&& line[line.size() - 1] == '\n')
+		line.erase(line.size() - 2);
 
-	it->second.appendToSendBuffer(alreadyTerminated ? message : message + "\r\n");
+	// Every reply leaves through here, so this is the one place where the
+	// server can promise it never puts a line on the wire that is longer
+	// than the 512 bytes it demands from its own clients.
+	if (line.size() > IRC_MESSAGE_MAX_CONTENT)
+		line.erase(IRC_MESSAGE_MAX_CONTENT);
+
+	it->second.appendToSendBuffer(line + "\r\n");
 	updateClientPollEvents(fd);
 }
 
@@ -870,12 +881,8 @@ void Server::sendJoinReplies(const Client &client, const Channel &channel)
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 			+ " 331 " + target + " :No topic is set");
 	else
-	{
-		const std::string topicPrefix = std::string(":") + SERVER_NAME + " 332 " + target + " :";
-		const size_t topicSpace = topicPrefix.size() < 510 ? 510 - topicPrefix.size() : 0;
-		queueMessage(client.getFd(), topicPrefix
-			+ channel.getTopic().substr(0, topicSpace));
-	}
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 332 " + target + " :" + channel.getTopic());
 
 	const std::string namesPrefix = std::string(":") + SERVER_NAME + " 353 "
 		+ client.getNickname() + " = " + channel.getName() + " :";
@@ -887,7 +894,10 @@ void Server::sendJoinReplies(const Client &client, const Channel &channel)
 		const std::string entry = (channel.isOperator(it->first) ? "@" : "")
 			+ it->second.getNickname();
 		// Split between nicknames, leaving two bytes for the terminating CRLF.
-		if (!names.empty() && namesPrefix.size() + names.size() + 1 + entry.size() > 510)
+		// The names are split across several replies rather than truncated:
+		// a member list must arrive whole, however many members there are.
+		if (!names.empty()
+			&& namesPrefix.size() + names.size() + 1 + entry.size() > IRC_MESSAGE_MAX_CONTENT)
 		{
 			queueMessage(client.getFd(), namesPrefix + names);
 			names.clear();
