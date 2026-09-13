@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 17:40:07 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 17:55:38 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -43,6 +43,11 @@ static const std::time_t CLOSING_LINGER = 2;
 // above would only be noticed when some other client happens to send
 // something.
 static const int POLL_TIMEOUT_MS = 1000;
+// How many bytes may be waiting to go out to a single client. Room to spare
+// for anything legitimate -- the member list of a very large channel is a
+// few KB -- while still putting a ceiling on what one client that has
+// stopped reading can make the server hold on to.
+static const size_t MAX_OUTPUT_QUEUE = 64 * 1024;
 
 // A parameter carrying several values separated by commas, the shape JOIN,
 // PART and KICK all accept. Empty pieces are dropped: "#a,,#b" names two
@@ -506,6 +511,24 @@ void Server::queueMessage(int fd, const std::string &message)
 	// than the 512 bytes it demands from its own clients.
 	if (line.size() > IRC_MESSAGE_MAX_CONTENT)
 		line.erase(IRC_MESSAGE_MAX_CONTENT);
+
+	// And it is also the one place that can tell when a client has stopped
+	// taking what it is sent. The queue only grows when the socket refuses
+	// more, so a client that never reads would otherwise make the server
+	// hold on to an unbounded amount of memory on its behalf.
+	if (it->second.getSendBuffer().size() + line.size() + 2 > MAX_OUTPUT_QUEUE)
+	{
+		if (!isMarkedForRemoval(fd))
+		{
+			std::cerr << "Output queue full for client fd " << fd
+				<< ", dropping the connection" << std::endl;
+			// Its channels are told why it vanished; the client itself is
+			// past being told anything, since it is not reading.
+			it->second.setQuitReason("Output queue exceeded");
+			markForRemoval(fd);
+		}
+		return;
+	}
 
 	it->second.appendToSendBuffer(line + "\r\n");
 	updateClientPollEvents(fd);
