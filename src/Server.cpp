@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 16:58:39 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 17:09:32 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -1012,10 +1012,12 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 void Server::sendJoinReplies(const Client &client, const Channel &channel)
 {
 	const std::string target = client.getNickname() + " " + channel.getName();
-	if (channel.getTopic().empty())
-		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-			+ " 331 " + target + " :No topic is set");
-	else
+
+	// RFC 2812 3.2.1: a successful JOIN is answered with the channel's topic
+	// and its member list. A channel without a topic has nothing to say about
+	// it, so nothing is sent. RPL_NOTOPIC (331) is the answer owed to someone
+	// who asked for the topic, not part of welcoming anyone into a channel.
+	if (!channel.getTopic().empty())
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 			+ " 332 " + target + " :" + channel.getTopic());
 
