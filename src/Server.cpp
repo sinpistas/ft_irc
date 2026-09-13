@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 20:56:14 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 22:31:01 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -1327,7 +1327,9 @@ void Server::handleInvite(Client &client, const IrcMessage &msg)
 	const std::string &channelName = msg.params[1];
 
 	std::map<int, Client>::iterator target = findClientByNickname(targetNick);
-	if (target == _clients.end())
+	// NICK reserves the name before USER completes registration. The sender
+	// is checked by processMessage(), but the recipient must be registered too.
+	if (target == _clients.end() || !target->second.isRegistered())
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 			+ " 401 " + client.getNickname() + " " + safeParameter(targetNick)
