@@ -15,6 +15,9 @@ class Channel
 		Channel(const std::string name);
 		~Channel();
 
+		// The channel's name as it was written when the channel was created.
+		// Looking a channel up is case insensitive, but what the clients are
+		// shown is this spelling, the same one for everybody.
 		const std::string &getName() const;
 
 		void setTopic(const std::string &topic);

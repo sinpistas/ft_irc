@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 16:35:21 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 16:58:39 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -35,7 +35,7 @@ static const char *SERVER_NAME = "irc.local";
 // How long a connection may stay without completing PASS/NICK/USER. The
 // password is what protects this server, so a client that never gets past
 // it may not keep a descriptor, a buffer and a poll slot indefinitely.
-static const std::time_t REGISTRATION_TIMEOUT = 30;
+static const std::time_t REGISTRATION_TIMEOUT = 60;
 // How long a client being disconnected is kept alive so that the reply
 // explaining why still reaches it. A client that does not read it loses it.
 static const std::time_t CLOSING_LINGER = 2;
@@ -967,24 +967,29 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 	for (std::vector<std::string>::const_iterator it = channels.begin();
 		it != channels.end(); ++it)
 	{
-		const std::string channelName = normalizeIrcName(*it);
-		if (!isValidChannelName(channelName))
+		if (!isValidChannelName(*it))
 		{
 			// One bad name in the list is refused on its own: the channels
 			// named next to it are still perfectly good.
 			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 				+ " 476 " + client.getNickname() + " "
-				+ safeParameter(channelName) + " :Bad Channel Mask");
+				+ safeParameter(*it) + " :Bad Channel Mask");
 			continue;
 		}
 
-		std::map<std::string, Channel>::iterator channel =
-			_channels.find(channelName);
+		// Channels are looked up without regard to case, so the key is the
+		// folded name; but the channel is created carrying the spelling it
+		// was asked for, and that spelling is what every client is shown
+		// from then on, whichever way they typed it themselves.
+		const std::string key = normalizeIrcName(*it);
+		std::map<std::string, Channel>::iterator channel = _channels.find(key);
 		const bool created = channel == _channels.end();
 		if (created)
-			channel = _channels.insert(std::make_pair(channelName, Channel(channelName))).first;
+			channel = _channels.insert(std::make_pair(key, Channel(*it))).first;
 		else if (channel->second.hasMember(client.getFd()))
 			continue;
+
+		const std::string &channelName = channel->second.getName();
 
 		addToChannel(client, channel->second);
 		// Whoever brings a channel into being is left in charge of it.
