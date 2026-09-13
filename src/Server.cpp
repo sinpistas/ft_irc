@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 19:41:32 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 20:39:12 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -16,6 +16,7 @@
 #include "IrcLimits.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <new>
 #include <cstring>
 #include <cerrno>
 #include <sys/socket.h>
@@ -260,6 +261,28 @@ void Server::acceptNewClients()
 		try
 		{
 			setNonBlocking(clientFd);
+
+			// Keep the accepted fd private until both containers own their
+			// entries. A failed insertion must not leak a socket or poll slot.
+			char numericHost[INET_ADDRSTRLEN];
+			std::string hostname = "unknown";
+			if (inet_ntop(AF_INET, &address.sin_addr, numericHost, sizeof(numericHost)) != NULL)
+				hostname = numericHost;
+
+			struct pollfd clientPoll;
+			clientPoll.fd = clientFd;
+			clientPoll.events = POLLIN;
+			clientPoll.revents = 0;
+			_clients.insert(std::pair<int, Client>(clientFd, Client(clientFd, hostname)));
+			_pollFds.push_back(clientPoll);
+		}
+		catch (const std::bad_alloc &)
+		{
+			_clients.erase(clientFd);
+			close(clientFd);
+			// Give existing clients their turn instead of draining the
+			// accept queue while no more connections can be stored.
+			break;
 		}
 		catch (const std::exception &e)
 		{
@@ -267,22 +290,6 @@ void Server::acceptNewClients()
 			close(clientFd);
 			continue;
 		}
-
-		// Keep the numeric address as the host name. Turning it into a real
-		// name would take a reverse DNS lookup, which blocks for as long as
-		// the resolver takes and would freeze every other client with it.
-		char numericHost[INET_ADDRSTRLEN];
-		std::string hostname = "unknown";
-		if (inet_ntop(AF_INET, &address.sin_addr, numericHost, sizeof(numericHost)) != NULL)
-			hostname = numericHost;
-
-		struct pollfd clientPoll;
-		clientPoll.fd = clientFd;
-		clientPoll.events = POLLIN;
-		clientPoll.revents = 0;
-		_pollFds.push_back(clientPoll);
-
-		_clients.insert(std::pair<int, Client>(clientFd, Client(clientFd, hostname)));
 
 		std::cout << "Accepted new client, fd " << clientFd << std::endl;
 	}
@@ -547,42 +554,51 @@ void Server::updateClientPollEvents(int fd)
 void Server::queueMessage(int fd, const std::string &message)
 {
 	std::map<int, Client>::iterator it = _clients.find(fd);
-	if (it == _clients.end())
+	if (it == _clients.end() || it->second.hasMemoryFailure())
 		return;
 
-	// Strip the terminator a caller may already have added, so the message
-	// is neither measured nor terminated twice.
-	std::string line = message;
-	if (line.size() >= 2 && line[line.size() - 2] == '\r'
-		&& line[line.size() - 1] == '\n')
-		line.erase(line.size() - 2);
-
-	// Every reply leaves through here, so this is the one place where the
-	// server can promise it never puts a line on the wire that is longer
-	// than the 512 bytes it demands from its own clients.
-	if (line.size() > IRC_MESSAGE_MAX_CONTENT)
-		line.erase(IRC_MESSAGE_MAX_CONTENT);
-
-	// And it is also the one place that can tell when a client has stopped
-	// taking what it is sent. The queue only grows when the socket refuses
-	// more, so a client that never reads would otherwise make the server
-	// hold on to an unbounded amount of memory on its behalf.
-	if (it->second.getSendBuffer().size() + line.size() + 2 > MAX_OUTPUT_QUEUE)
+	try
 	{
-		if (!isMarkedForRemoval(fd))
-		{
-			std::cerr << "Output queue full for client fd " << fd
-				<< ", dropping the connection" << std::endl;
-			// Its channels are told why it vanished; the client itself is
-			// past being told anything, since it is not reading.
-			it->second.setQuitReason("Output queue exceeded");
-			markForRemoval(fd);
-		}
-		return;
-	}
+		// Strip the terminator a caller may already have added, so the message
+		// is neither measured nor terminated twice.
+		std::string line = message;
+		if (line.size() >= 2 && line[line.size() - 2] == '\r'
+			&& line[line.size() - 1] == '\n')
+			line.erase(line.size() - 2);
 
-	it->second.appendToSendBuffer(line + "\r\n");
-	updateClientPollEvents(fd);
+		// Every reply leaves through here, so this is the one place where the
+		// server can promise it never puts a line on the wire that is longer
+		// than the 512 bytes it demands from its own clients.
+		if (line.size() > IRC_MESSAGE_MAX_CONTENT)
+			line.erase(IRC_MESSAGE_MAX_CONTENT);
+
+		// And it is also the one place that can tell when a client has stopped
+		// taking what it is sent. The queue only grows when the socket refuses
+		// more, so a client that never reads would otherwise make the server
+		// hold on to an unbounded amount of memory on its behalf.
+		if (it->second.getSendBuffer().size() + line.size() + 2 > MAX_OUTPUT_QUEUE)
+		{
+			if (!isMarkedForRemoval(fd))
+			{
+				std::cerr << "Output queue full for client fd " << fd
+					<< ", dropping the connection" << std::endl;
+				// Its channels are told why it vanished; the client itself is
+				// past being told anything, since it is not reading.
+				it->second.setQuitReason("Output queue exceeded");
+				markForRemoval(fd);
+			}
+			return;
+		}
+
+		it->second.appendToSendBuffer(line + "\r\n");
+		updateClientPollEvents(fd);
+	}
+	catch (const std::bad_alloc &)
+	{
+		// The recipient's queue failed, which need not be the client
+		// currently issuing the command (e.g. a channel broadcast).
+		handleMemoryFailure(fd);
+	}
 }
 
 bool Server::sendToClient(int fd)
@@ -612,13 +628,13 @@ bool Server::sendToClient(int fd)
 
 void Server::markForRemoval(int fd)
 {
-	// Only ever records the descriptor: erasing here would invalidate the
+	// Only changes closing state: erasing here would invalidate the
 	// iterators and indices that the read loop and the poll loop are using.
 	std::map<int, Client>::iterator it = _clients.find(fd);
 	if (it == _clients.end())
 		return;
 
-	if (_pendingRemoval.insert(fd).second)
+	if (!isMarkedForRemoval(fd))
 	{
 		it->second.startClosing();
 		// Nothing this client says from now on will be acted upon, so stop
@@ -630,41 +646,55 @@ void Server::markForRemoval(int fd)
 
 bool Server::isMarkedForRemoval(int fd) const
 {
-	return _pendingRemoval.find(fd) != _pendingRemoval.end();
+	std::map<int, Client>::const_iterator it = _clients.find(fd);
+	return it != _clients.end() && it->second.getClosingTime() != 0;
+}
+
+void Server::handleMemoryFailure(int fd)
+{
+	std::map<int, Client>::iterator it = _clients.find(fd);
+	if (it == _clients.end())
+		return;
+	it->second.failForMemory();
+	updateClientPollEvents(fd);
 }
 
 void Server::removePendingClients()
 {
-	// Take the whole set aside first: removeClient() must be free to mark
-	// another client (a broadcast to a peer that is gone, for instance)
-	// without modifying the container being iterated here. Anything marked
-	// during this call is simply handled in the next pass.
-	std::set<int> pending;
-	pending.swap(_pendingRemoval);
-
 	const std::time_t now = std::time(NULL);
-	for (std::set<int>::const_iterator it = pending.begin(); it != pending.end(); ++it)
+	for (std::map<int, Client>::iterator it = _clients.begin(); it != _clients.end(); )
 	{
-		std::map<int, Client>::const_iterator clientIt = _clients.find(*it);
+		// Advance before erasing; broadcasts can mark other clients but
+		// never erase them. No temporary set or allocation is needed.
+		std::map<int, Client>::iterator clientIt = it++;
+		if (!isMarkedForRemoval(clientIt->first))
+			continue;
 		// close() throws away whatever is still queued, so a client being
 		// disconnected is held on to until the reply explaining why has gone
 		// out -- but never longer than CLOSING_LINGER, or one that simply
 		// stops reading would keep its descriptor alive by doing nothing.
-		if (clientIt != _clients.end()
+		if (!clientIt->second.hasMemoryFailure()
 			&& clientIt->second.hasPendingOutput()
 			&& now - clientIt->second.getClosingTime() < CLOSING_LINGER)
 		{
-			_pendingRemoval.insert(*it);
 			continue;
 		}
-		removeClient(*it);
+		removeClient(clientIt->first);
 	}
 }
 
 void Server::addToChannel(Client &client, Channel &channel)
 {
 	channel.addMember(client.getFd());
-	client.joinChannel(channel.getName());
+	try
+	{
+		client.joinChannel(channel.getName());
+	}
+	catch (const std::bad_alloc &)
+	{
+		channel.removeMember(client.getFd());
+		throw;
+	}
 }
 
 void Server::removeFromChannel(Client &client, std::string channelName)
@@ -696,14 +726,17 @@ void Server::removeFromAllChannels(Client &client)
 	// descriptor that the system may already have handed to someone else.
 	for (std::map<std::string, Channel>::iterator it = _channels.begin(); it != _channels.end(); )
 	{
-		// removeFromChannel() may erase the entry, so step past it first.
+		// Erase directly using existing nodes: removeFromChannel() copies
+		// and normalizes names, which can allocate during error cleanup.
 		std::map<std::string, Channel>::iterator current = it++;
 		// An invitation must not outlive the client holding it: descriptors
 		// get reused, and the next owner of this one was invited to nothing.
 		current->second.removeInvite(client.getFd());
-		if (current->second.hasMember(client.getFd()))
-			removeFromChannel(client, current->first);
+		current->second.removeMember(client.getFd());
+		if (current->second.isEmpty())
+			_channels.erase(current);
 	}
+	client.clearChannels();
 }
 
 void Server::broadcastQuit(const Client &client)
@@ -741,7 +774,15 @@ void Server::removeClient(int fd)
 	{
 		// Announce first, leave the channels second: the announcement needs
 		// the memberships that the next call is about to undo.
-		broadcastQuit(clientIt->second);
+		try
+		{
+			broadcastQuit(clientIt->second);
+		}
+		catch (const std::bad_alloc &)
+		{
+			// A QUIT notification is best effort under memory pressure.
+			// Removing memberships and closing the socket must still finish.
+		}
 		// Leave every channel before close() allows this fd to be reused.
 		removeFromAllChannels(clientIt->second);
 	}
@@ -771,9 +812,16 @@ void Server::disconnectStaleClients()
 		if (now - it->second.getConnectionTime() < REGISTRATION_TIMEOUT)
 			continue;
 
-		queueMessage(it->first, "ERROR :Closing Link: " + it->second.getHostname()
-			+ " (Registration timeout)");
-		markForRemoval(it->first);
+		try
+		{
+			queueMessage(it->first, "ERROR :Closing Link: " + it->second.getHostname()
+				+ " (Registration timeout)");
+			markForRemoval(it->first);
+		}
+		catch (const std::bad_alloc &)
+		{
+			handleMemoryFailure(it->first);
+		}
 	}
 }
 
@@ -829,35 +877,44 @@ void Server::pollLoop()
 				continue;
 			}
 
-			// This client is already on its way out: the only thing left to
-			// do with it is push out the reply that says why.
-			if (isMarkedForRemoval(fd))
+			try
 			{
-				if (revents & POLLOUT)
-					sendToClient(fd);
-				continue;
+				// This client is already on its way out: the only thing left to
+				// do with it is push out the reply that says why.
+				if (isMarkedForRemoval(fd))
+				{
+					if (revents & POLLOUT)
+						sendToClient(fd);
+					continue;
+				}
+
+				// A peer can send its last bytes and close in the same instant, so
+				// the kernel may report POLLIN and POLLHUP/POLLERR together. Read
+				// first and always extract whatever complete lines that leaves in
+				// the buffer. Defer a hangup while input is readable so data larger
+				// than one receive buffer is processed across successive polls.
+				bool stillConnected = true;
+				if (revents & POLLIN)
+					stillConnected = receiveFromClient(fd);
+
+				extractCompleteLines(fd);
+
+				// Only try to flush output if the client is still there and no
+				// handler decided to close it; no point writing to a connection we
+				// already know is gone, or that is about to be.
+				if (stillConnected && !isMarkedForRemoval(fd) && (revents & POLLOUT))
+					stillConnected = sendToClient(fd);
+
+				if (!stillConnected || (revents & (POLLERR | POLLNVAL))
+					|| ((revents & POLLHUP) && !(revents & POLLIN)))
+					markForRemoval(fd);
 			}
-
-			// A peer can send its last bytes and close in the same instant, so
-			// the kernel may report POLLIN and POLLHUP/POLLERR together. Read
-			// first and always extract whatever complete lines that leaves in
-			// the buffer. Defer a hangup while input is readable so data larger
-			// than one receive buffer is processed across successive polls.
-			bool stillConnected = true;
-			if (revents & POLLIN)
-				stillConnected = receiveFromClient(fd);
-
-			extractCompleteLines(fd);
-
-			// Only try to flush output if the client is still there and no
-			// handler decided to close it; no point writing to a connection we
-			// already know is gone, or that is about to be.
-			if (stillConnected && !isMarkedForRemoval(fd) && (revents & POLLOUT))
-				stillConnected = sendToClient(fd);
-
-			if (!stillConnected || (revents & (POLLERR | POLLNVAL))
-				|| ((revents & POLLHUP) && !(revents & POLLIN)))
-				markForRemoval(fd);
+			catch (const std::bad_alloc &)
+			{
+				// recv buffering, parsing and command construction all belong
+				// to this connection. Defer erasure until this poll pass ends.
+				handleMemoryFailure(fd);
+			}
 		}
 
 		disconnectStaleClients();

@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 18:54:01 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 20:39:14 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -67,6 +67,8 @@ class Server
 		// still holding an iterator/index into _clients and _pollFds.
 		void markForRemoval(int fd);
 		bool isMarkedForRemoval(int fd) const;
+		// Abort only this connection; marking it must itself need no memory.
+		void handleMemoryFailure(int fd);
 		// Disconnect every client marked during this pass. Called from one
 		// single place, once both loops above are done with their iterators.
 		void removePendingClients();
@@ -118,10 +120,9 @@ class Server
 		int                       _serverFd;
 		// File descriptors monitored by the poll() event loop.
 		std::vector<struct pollfd> _pollFds;
-		// Connected clients, keyed by their fd.
+		// Connected clients, keyed by their fd. Pending removals are stored
+		// in Client's closing state, so marking never allocates.
 		std::map<int, Client>     _clients;
-		// Clients to disconnect at the end of the current poll() pass.
-		std::set<int>             _pendingRemoval;
 		// Channel keys use normalizeIrcName() so all spellings share one entry.
 		std::map<std::string, Channel> _channels;
 };

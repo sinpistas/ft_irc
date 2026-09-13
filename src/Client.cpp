@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 16:04:21 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 20:39:13 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -16,7 +16,7 @@
 
 Client::Client(int fd, const std::string &hostname)
 	: _fd(fd), _hostname(hostname),
-	  _connectedAt(std::time(NULL)), _closingSince(0),
+	  _connectedAt(std::time(NULL)), _closingSince(0), _memoryFailure(false),
 	  _discardingLine(false),
 	  _quitReason("Connection closed"),
 	  _passwordAccepted(false), _isRegistered(false)
@@ -51,6 +51,19 @@ void Client::startClosing()
 std::time_t Client::getClosingTime() const
 {
 	return _closingSince;
+}
+
+void Client::failForMemory()
+{
+	_memoryFailure = true;
+	startClosing();
+	_receiveBuffer.clear();
+	_sendBuffer.clear();
+}
+
+bool Client::hasMemoryFailure() const
+{
+	return _memoryFailure;
 }
 
 std::string Client::getPrefix() const
@@ -246,6 +259,11 @@ bool Client::isInChannel(const std::string &channel) const
 const std::set<std::string> &Client::getChannels() const
 {
 	return _channels;
+}
+
+void Client::clearChannels()
+{
+	_channels.clear();
 }
 
 void Client::addMode(char mode)

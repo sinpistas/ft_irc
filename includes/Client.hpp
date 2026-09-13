@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 16:04:20 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 20:39:15 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -38,6 +38,10 @@ class Client
 		// the client before its socket is closed. Only the first call counts.
 		void startClosing();
 		std::time_t getClosingTime() const;
+		// Abort this connection without allocating, even if it was already
+		// waiting to flush a normal closing reply.
+		void failForMemory();
+		bool hasMemoryFailure() const;
 		// "nick!user@host": the prefix RFC 2812 puts on every message sent by
 		// a client, so whoever receives it knows who it came from. Build it
 		// only here, never by hand at each call site, and never before the
@@ -103,6 +107,8 @@ class Client
 		void joinChannel(const std::string &channel);
 		void leaveChannel(const std::string &channel);
 		const std::set<std::string> &getChannels() const;
+		// Used by Server when destroying all memberships during disconnect.
+		void clearChannels();
 		bool isInChannel(const std::string &channel) const;
 		
 		// Modes (for MODE command)
@@ -119,6 +125,7 @@ class Client
 		std::string _hostname;
 		std::time_t _connectedAt;
 		std::time_t _closingSince;
+		bool        _memoryFailure;
 		std::string _receiveBuffer;
 		// Set while the remains of an over-long line are being skipped, up to
 		// and including the LF that ends it.
