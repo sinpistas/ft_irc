@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 17:09:32 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 17:40:07 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -181,11 +181,13 @@ void Server::initSocket()
 
 void Server::setNonBlocking(int fd)
 {
-	int flags = fcntl(fd, F_GETFL, 0); //F_GETFL returns the file access mode
-	if (flags < 0)
-		throw std::runtime_error(std::string("fcntl(F_GETFL): ") + std::strerror(errno));
-
-	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
+	// The subject allows exactly one form of fcntl(), and this is it. Reading
+	// the current flags to merge them in would be the usual way of doing this,
+	// but it is not needed here: the only descriptors this is called on come
+	// straight out of socket() and accept(), which hand them over with no
+	// status flags set, so there is nothing to preserve. Note also that
+	// F_SETFL cannot change the access mode, which stays as it was.
+	if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
 		throw std::runtime_error(std::string("fcntl(F_SETFL): ") + std::strerror(errno));
 }
 
