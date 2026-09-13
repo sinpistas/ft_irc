@@ -1078,7 +1078,7 @@ void Server::handleNick(Client &client, const IrcMessage &msg)
 	if (client.tryRegister())
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 001 "
-			+ client.getNickname() + " :Welcome to the ft_irc server");
+			+ client.getNickname() + " :Welcome to the ft_irc server " + client.getPrefix());
 	}
 }
 
@@ -1128,7 +1128,7 @@ void Server::handleUser(Client &client, const IrcMessage &msg)
 	if (client.tryRegister())
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 001 "
-			+ client.getNickname() + " :Welcome to the ft_irc server");
+			+ client.getNickname() + " :Welcome to the ft_irc server " + client.getPrefix());
 	}
 }
 
