@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:08 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 16:15:31 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/13 16:25:48 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -942,46 +942,58 @@ void Server::handleUser(Client &client, const IrcMessage &msg)
 
 void Server::handleJoin(Client &client, const IrcMessage &msg)
 {
-    if (msg.params.size() != 1)
-    {
-        queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-            + " 461 " + client.getNickname() + " JOIN :Invalid number of parameters");
-        return;
-    }
-
-    const std::string channelName = normalizeIrcName(msg.params[0]);
-    if (!isValidChannelName(channelName))
-    {
-        queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-            + " 476 " + client.getNickname() + " "
-            + safeParameter(channelName) + " :Bad Channel Mask");
-        return;
-    }
-
-    std::map<std::string, Channel>::iterator channel =
-        _channels.find(channelName);
-    const bool created = channel == _channels.end();
-    if (created)
-    {
-        channel = _channels.insert(std::make_pair(channelName, Channel(channelName))).first;
-    }
-    else if (channel->second.hasMember(client.getFd()))
-        return;
-
-    addToChannel(client, channel->second);
-    if (created)
-        channel->second.addOperator(client.getFd());
-
-    std::cout << client.getNickname() << " joined "
-              << channelName << " channel." << std::endl;
-
-	const std::string notification = ":" + client.getPrefix() + " JOIN :" + channelName;
-	for (std::map<int, Client>::const_iterator it = _clients.begin(); it != _clients.end(); ++it)
+	if (msg.params.empty() || msg.params[0].empty())
 	{
-		if (channel->second.hasMember(it->first))
-			queueMessage(it->first, notification);
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 461 " + client.getNickname() + " JOIN :Not enough parameters");
+		return;
 	}
-	sendJoinReplies(client, channel->second);
+
+	// JOIN takes a list of channels and, after it, an optional list of the
+	// keys that go with them, paired by position. The keys are accepted but
+	// not checked: no channel can have one until MODE +k stores it, and that
+	// is where pairing them and answering 475 (ERR_BADCHANNELKEY) belongs.
+	// What matters here is that the key form stops being an error, since
+	// without it there would be no way into a channel that has a key.
+	const std::vector<std::string> channels = splitOnCommas(msg.params[0]);
+	for (std::vector<std::string>::const_iterator it = channels.begin();
+		it != channels.end(); ++it)
+	{
+		const std::string channelName = normalizeIrcName(*it);
+		if (!isValidChannelName(channelName))
+		{
+			// One bad name in the list is refused on its own: the channels
+			// named next to it are still perfectly good.
+			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+				+ " 476 " + client.getNickname() + " "
+				+ safeParameter(channelName) + " :Bad Channel Mask");
+			continue;
+		}
+
+		std::map<std::string, Channel>::iterator channel =
+			_channels.find(channelName);
+		const bool created = channel == _channels.end();
+		if (created)
+			channel = _channels.insert(std::make_pair(channelName, Channel(channelName))).first;
+		else if (channel->second.hasMember(client.getFd()))
+			continue;
+
+		addToChannel(client, channel->second);
+		// Whoever brings a channel into being is left in charge of it.
+		if (created)
+			channel->second.addOperator(client.getFd());
+
+		std::cout << client.getNickname() << " joined "
+			<< channelName << " channel." << std::endl;
+
+		const std::string notification = ":" + client.getPrefix() + " JOIN :" + channelName;
+		const std::set<int> &members = channel->second.getMembers();
+		for (std::set<int>::const_iterator member = members.begin();
+			member != members.end(); ++member)
+			queueMessage(*member, notification);
+
+		sendJoinReplies(client, channel->second);
+	}
 }
 
 void Server::sendJoinReplies(const Client &client, const Channel &channel)
