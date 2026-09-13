@@ -1134,6 +1134,24 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 		return;
 	}
 
+	// RFC 2812 3.2.1: JOIN 0 is a PART from every current channel.
+	if (msg.params[0] == "0")
+	{
+		const std::set<std::string> &channels = client.getChannels();
+		for (std::set<std::string>::const_iterator it = channels.begin();
+			it != channels.end() && !isMarkedForRemoval(client.getFd()); )
+		{
+			IrcMessage part;
+			part.command = "PART";
+			part.params.push_back(*it);
+			// PART erases this membership. Keep the name in the request
+			// and advance first so the next iterator remains valid.
+			++it;
+			handlePart(client, part);
+		}
+		return;
+	}
+
 	// JOIN takes a list of channels and, after it, an optional list of the
 	// keys that go with them, paired by position. The keys are accepted but
 	// not checked: no channel can have one until MODE +k stores it, and that
