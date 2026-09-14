@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+         #
+#    By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/08/22 13:50:13 by apestana          #+#    #+#              #
-#    Updated: 2026/09/13 23:29:05 by apestana         ###   ########.fr        #
+#    Updated: 2026/09/14 14:48:03 by vbullock         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -17,7 +17,7 @@ NAME		= ircserv
 ##### Compiler and flags ###################
 
 CXX			= c++
-CXXFLAGS	= -Wall -Wextra -Werror -std=c++98
+CXXFLAGS	= -Wall -Wextra -std=c++98
 
 # Generate dependency files automatically
 CPPFLAGS	= -MMD -MP

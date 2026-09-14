@@ -11,12 +11,12 @@
 // · l: Set/remove the user limit to channel
 
 Channel::Channel()
-	: _channelName("Unnamed")
+	: _channelName("Unnamed"), limit(0)
 {
 }
 
 Channel::Channel(const std::string name)
-	: _channelName(name)
+	: _channelName(name), limit(0)
 {
 }
 
@@ -28,11 +28,14 @@ Channel::~Channel()
 // Modes (for MODE command)
 void Channel::addMode(char mode)
 {
-	std::cout << "Mode added." << mode << std::endl;
+	if (_modes.find(mode) == std::string::npos)
+		_modes += mode;
 }
 void Channel::removeMode(char mode)
 {
-	std::cout << "Mode removed." << mode << std::endl;
+	std::string::size_type pos = _modes.find(mode);
+	if (pos != std::string::npos)
+		_modes.erase(pos, 1);
 }
 bool Channel::hasMode(char mode) const
 {
@@ -59,6 +62,26 @@ const std::string &Channel::getTopic() const
 const std::string &Channel::getModes() const
 {
 	return this->_modes;
+}
+
+void Channel::setChannelKey(const std::string &key)
+{
+	this->_channelKey = key;
+}
+
+const std::string &Channel::getChannelKey() const
+{
+	return this->_channelKey;
+}
+
+void Channel::setLimit(int value)
+{
+	this->limit = value;
+}
+
+int Channel::getLimit() const
+{
+	return this->limit;
 }
 
 void Channel::addInvite(int fd)

@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   IrcParameters.hpp                                  :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
+/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:32:11 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 23:32:13 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/14 14:01:17 by vbullock         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 

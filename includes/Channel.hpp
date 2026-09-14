@@ -36,6 +36,11 @@ class Channel
 		const std::set<int> &getMembers() const;
 		bool isEmpty() const;
 
+		void setChannelKey(const std::string &key);
+		const std::string &getChannelKey() const;
+		void setLimit(int value);
+		int getLimit() const;
+
 		// Standing invitations. They only decide anything while the channel
 		// is invite-only: on any other channel an invitation is just a
 		// message. An invitation is used up when its holder joins, and goes
@@ -56,6 +61,9 @@ class Channel
 		std::set<int> _members;
 		std::set<int> _operators;
 		std::set<int> _invited;
+		std::string _channelKey;
+		int	limit;
+		
 };
 
 #endif
