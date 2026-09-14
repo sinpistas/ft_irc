@@ -98,6 +98,9 @@ class Server
 		bool isNicknameInUse(const std::string &nickname, int ignoredFd) const;
 		// JOIN-only replies, implemented in Join.cpp.
 		void sendJoinReplies(const Client &client, const Channel &channel);
+		// KICK-only helper, implemented in Kick.cpp.
+		void kickFromChannel(Client &client, const std::string &channelName,
+			const std::string &nickname, const std::string &reason);
 
 		static const char SERVER_NAME[];
 		int _port;
