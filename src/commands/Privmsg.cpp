@@ -18,7 +18,9 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 {
 	// RFC 2812 3.3.1: PRIVMSG <msgtarget> <text to be sent>. Each of the two
 	// missing has its own answer.
-	if (msg.params.empty() || msg.params[0].empty())
+	const std::vector<std::string> targets = msg.params.empty()
+		? std::vector<std::string>() : IrcParameters::splitOnCommas(msg.params[0]);
+	if (targets.empty())
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 			+ " 411 " + client.getNickname() + " :No recipient given (PRIVMSG)");
@@ -38,29 +40,25 @@ void Server::handlePrivmsg(Client &client, const IrcMessage &msg)
 	const std::string text = " :" + msg.params[1];
 
 	// A message may be addressed to several targets at once, separated by
-	// commas. Each one is resolved, and fails, on its own.
-	const std::vector<std::string> targets = IrcParameters::splitOnCommas(msg.params[0]);
+	// commas. Resolve each distinct IRC name once, preserving request order.
+	// Deduplicate targets, not recipient fds: a user may legitimately receive
+	// one message for each of two different channels they share with us.
+	std::set<std::string> processedTargets;
 	for (std::vector<std::string>::const_iterator it = targets.begin();
 		it != targets.end(); ++it)
 	{
+		const std::string key = normalizeIrcName(*it);
+		if (!processedTargets.insert(key).second)
+			continue;
 		if ((*it)[0] == '#' || (*it)[0] == '&')
 		{
 			std::map<std::string, Channel>::iterator channel =
-				_channels.find(normalizeIrcName(*it));
+				_channels.find(key);
 			if (channel == _channels.end())
 			{
 				queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 					+ " 401 " + client.getNickname() + " " + IrcParameters::safeParameter(*it)
 					+ " :No such nick/channel");
-				continue;
-			}
-
-			// Talking to a channel is something its members do.
-			if (!channel->second.hasMember(client.getFd()))
-			{
-				queueMessage(client.getFd(), std::string(":") + SERVER_NAME
-					+ " 404 " + client.getNickname() + " "
-					+ channel->second.getName() + " :Cannot send to channel");
 				continue;
 			}
 
