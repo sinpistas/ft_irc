@@ -13,6 +13,7 @@
 #include "Server.hpp"
 #include "IrcCaseMapping.hpp"
 #include "IrcParameters.hpp"
+#include "IrcLimits.hpp"
 
 void Server::handleInvite(Client &client, const IrcMessage &msg)
 {
@@ -42,7 +43,7 @@ void Server::handleInvite(Client &client, const IrcMessage &msg)
 	// operators may do so while it is invite-only.
 	std::map<std::string, Channel>::iterator channel =
 		_channels.find(normalizeIrcName(channelName));
-	std::string shownChannel = IrcParameters::safeParameter(channelName);
+	std::string shownChannel = channelName;
 
 	if (channel != _channels.end())
 	{
@@ -72,14 +73,31 @@ void Server::handleInvite(Client &client, const IrcMessage &msg)
 				+ " :You're not channel operator");
 			return;
 		}
-
-		channel->second.addInvite(target->first);
 	}
 
-	// Only these two hear about it: an invitation is not channel news.
-	queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 341 "
+	// Preserve the requested destination, even when it is not a valid channel.
+	// A final parameter containing spaces or starting with ':' needs a colon
+	// in the numeric reply too; ordinary channel replies keep their format.
+	const std::string separator = shownChannel[0] == ':'
+		|| shownChannel.find(' ') != std::string::npos ? " :" : " ";
+	const std::string confirmation = std::string(":") + SERVER_NAME + " 341 "
 		+ client.getNickname() + " " + target->second.getNickname()
-		+ " " + shownChannel);
-	queueMessage(target->first, ":" + client.getPrefix() + " INVITE "
-		+ target->second.getNickname() + " :" + shownChannel);
+		+ separator + shownChannel;
+	const std::string invitation = ":" + client.getPrefix() + " INVITE "
+		+ target->second.getNickname() + " :" + shownChannel;
+	// A destination cannot be truncated. Check both messages before storing
+	// an invitation or confirming success (RFC 2812, RPL_TRYAGAIN on a drop).
+	if (confirmation.size() > IRC_MESSAGE_MAX_CONTENT
+		|| invitation.size() > IRC_MESSAGE_MAX_CONTENT)
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 263 "
+			+ client.getNickname() + " INVITE :Invitation destination is too long");
+		return;
+	}
+	if (channel != _channels.end())
+		channel->second.addInvite(target->first);
+
+	// Only these two hear about it: an invitation is not channel news.
+	queueMessage(client.getFd(), confirmation);
+	queueMessage(target->first, invitation);
 }
