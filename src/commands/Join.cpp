@@ -16,6 +16,26 @@
 #include "IrcParameters.hpp"
 #include <iostream>
 
+// JOIN pairs channels and keys by position. Keep empty fields so a missing
+// key (or an ignored empty channel) never shifts the following pairs.
+static std::vector<std::string> splitJoinList(const std::string &value)
+{
+	std::vector<std::string> parts;
+	std::string::size_type start = 0;
+	while (true)
+	{
+		const std::string::size_type end = value.find(',', start);
+		if (end == std::string::npos)
+		{
+			parts.push_back(value.substr(start));
+			break;
+		}
+		parts.push_back(value.substr(start, end - start));
+		start = end + 1;
+	}
+	return parts;
+}
+
 static bool isValidChannelName(const std::string &name)
 {
 	if (name.size() < 2 || name.size() > 50 || (name[0] != '#' && name[0] != '&'))
@@ -31,7 +51,7 @@ static bool isValidChannelName(const std::string &name)
 
 void Server::handleJoin(Client &client, const IrcMessage &msg)
 {
-	if (msg.params.empty() || msg.params[0].empty())
+	if (msg.params.empty() || msg.params[0].find_first_not_of(',') == std::string::npos)
 	{
 		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 			+ " 461 " + client.getNickname() + " JOIN :Not enough parameters");
@@ -56,16 +76,15 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 		return;
 	}
 
-	// JOIN takes a list of channels and, after it, an optional list of the
-	// keys that go with them, paired by position. The keys are accepted but
-	// not checked: no channel can have one until MODE +k stores it, and that
-	// is where pairing them and answering 475 (ERR_BADCHANNELKEY) belongs.
-	// What matters here is that the key form stops being an error, since
-	// without it there would be no way into a channel that has a key.
-	const std::vector<std::string> channels = IrcParameters::splitOnCommas(msg.params[0]);
+	const std::vector<std::string> channels = splitJoinList(msg.params[0]);
+	const std::vector<std::string> keys = msg.params.size() > 1
+		? splitJoinList(msg.params[1]) : std::vector<std::string>();
+	size_t keyIndex = 0;
 	for (std::vector<std::string>::const_iterator it = channels.begin();
-		it != channels.end(); ++it)
+		it != channels.end() && !isMarkedForRemoval(client.getFd()); ++it, ++keyIndex)
 	{
+		if (it->empty())
+			continue;
 		if (!isValidChannelName(*it))
 		{
 			// One bad name in the list is refused on its own: the channels
@@ -98,6 +117,23 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
 				+ " 473 " + client.getNickname() + " " + channelName
 				+ " :Cannot join channel (+i)");
+			continue;
+		}
+
+		if (channel->second.hasMode('k')
+			&& (keyIndex >= keys.size() || keys[keyIndex] != channel->second.getChannelKey()))
+		{
+			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+				+ " 475 " + client.getNickname() + " " + channelName
+				+ " :Cannot join channel (+k)");
+			continue;
+		}
+		if (channel->second.hasMode('l') && channel->second.getLimit() > 0
+			&& channel->second.getMembers().size() >= static_cast<size_t>(channel->second.getLimit()))
+		{
+			queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+				+ " 471 " + client.getNickname() + " " + channelName
+				+ " :Cannot join channel (+l)");
 			continue;
 		}
 
