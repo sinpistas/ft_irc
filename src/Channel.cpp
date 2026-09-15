@@ -99,7 +99,8 @@ bool Channel::isInvited(int fd) const
 
 void Channel::addOperator(int fd)
 {
-	if (!isOperator(fd))
+	// Operator privileges belong only to current channel members.
+	if (hasMember(fd))
 		this->_operators.insert(fd);
 }
 
@@ -124,12 +125,9 @@ void Channel::addMember(int fd)
 
 void Channel::removeMember(int fd)
 {
-	if(hasMember(fd))
-	{
-		this->_members.erase(fd);
-		// Channel privileges must not survive the member's departure.
-		this->_operators.erase(fd);
-	}
+	this->_members.erase(fd);
+	// Always clear privileges, even if the membership was already absent.
+	this->_operators.erase(fd);
 }
 
 const std::set<int> &Channel::getMembers() const
