@@ -1,3 +1,14 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   Channel.cpp                                        :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/09/16 01:08:42 by apestana          #+#    #+#             */
+/*   Updated: 2026/09/16 01:08:45 by apestana         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
 
 #include "Channel.hpp"
 
@@ -40,6 +51,16 @@ void Channel::removeMode(char mode)
 bool Channel::hasMode(char mode) const
 {
 	return this->_modes.find(mode) != std::string::npos;
+}
+
+void Channel::swapModeState(Channel &prepared)
+{
+	_modes.swap(prepared._modes);
+	_channelKey.swap(prepared._channelKey);
+	_operators.swap(prepared._operators);
+	const int oldLimit = limit;
+	limit = prepared.limit;
+	prepared.limit = oldLimit;
 }
 
 void Channel::setTopic(const std::string &topic)

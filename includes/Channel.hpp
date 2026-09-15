@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   Channel.hpp                                        :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/09/16 01:07:29 by apestana          #+#    #+#             */
+/*   Updated: 2026/09/16 01:07:32 by apestana         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #ifndef CHANNEL_HPP
 #define CHANNEL_HPP
 
@@ -27,6 +39,8 @@ class Channel
 		void removeMode(char mode);
 		bool hasMode(char mode) const;
 		const std::string &getModes() const;
+		// Commit MODE changes prepared on a copy of this channel, without allocating.
+		void swapModeState(Channel &prepared);
 
 		void addMember(int fd);
 		// Remove membership and any operator privileges for this descriptor.
