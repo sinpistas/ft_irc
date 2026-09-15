@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:28:49 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 23:28:53 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/16 01:14:18 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -77,7 +77,9 @@ void Server::catchShutdownSignals()
 	// would leave the server blocked until some client happened to speak.
 	sa.sa_flags = 0;
 
-	if (sigaction(SIGINT, &sa, NULL) < 0 || sigaction(SIGTERM, &sa, NULL) < 0)
+	// All three signals request the same orderly shutdown through pollLoop().
+	if (sigaction(SIGINT, &sa, NULL) < 0 || sigaction(SIGTERM, &sa, NULL) < 0
+		|| sigaction(SIGQUIT, &sa, NULL) < 0)
 		throw std::runtime_error(std::string("sigaction: ") + std::strerror(errno));
 }
 
