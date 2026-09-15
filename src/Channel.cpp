@@ -39,8 +39,6 @@ void Channel::removeMode(char mode)
 }
 bool Channel::hasMode(char mode) const
 {
-	// find() reports "not found" with npos, never with a character value:
-	// comparing it against '\n' made every mode look as if it were set.
 	return this->_modes.find(mode) != std::string::npos;
 }
 
@@ -88,10 +86,12 @@ void Channel::addInvite(int fd)
 {
 	this->_invited.insert(fd);
 }
+
 void Channel::removeInvite(int fd)
 {
 	this->_invited.erase(fd);
 }
+
 bool Channel::isInvited(int fd) const
 {
 	return this->_invited.find(fd) != this->_invited.end();
@@ -99,13 +99,15 @@ bool Channel::isInvited(int fd) const
 
 void Channel::addOperator(int fd)
 {
-	if (hasMember(fd))
+	if (!isOperator(fd))
 		this->_operators.insert(fd);
 }
+
 void Channel::removeOperator(int fd)
 {
-	std::cout << "Operator removed." << fd << std::endl;
+	this->_operators.erase(fd);
 }
+
 bool Channel::isOperator(int fd) const
 {
 	if (this->_operators.find(fd) != this->_operators.end())
@@ -116,22 +118,30 @@ bool Channel::isOperator(int fd) const
 
 void Channel::addMember(int fd)
 {
-	this->_members.insert(fd);
+	if(!hasMember(fd))
+		this->_members.insert(fd);
 }
+
 void Channel::removeMember(int fd)
 {
-	this->_members.erase(fd);
-	// Channel privileges must not survive the member's departure.
-	this->_operators.erase(fd);
+	if(hasMember(fd))
+	{
+		this->_members.erase(fd);
+		// Channel privileges must not survive the member's departure.
+		this->_operators.erase(fd);
+	}
 }
+
 const std::set<int> &Channel::getMembers() const
 {
 	return this->_members;
 }
+
 bool Channel::isEmpty() const
 {
 	return this->_members.empty();
 }
+
 bool Channel::hasMember(int fd) const
 {
 	if (this->_members.find(fd) != this->_members.end())
