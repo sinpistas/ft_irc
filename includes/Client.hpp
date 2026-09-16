@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:48:58 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 20:39:15 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 00:11:09 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -93,7 +93,9 @@ class Client
 		// PASS acceptance and completed registration are separate states.
 		void setPasswordAccepted(bool accepted);
 		bool hasAcceptedPassword() const;
-		// Mark the client registered only after PASS, NICK and USER succeeded.
+		// CAP LS/REQ pause registration on this connection until CAP END.
+		void setCapNegotiating(bool negotiating);
+		// Register once PASS, NICK and USER succeeded and CAP has finished.
 		bool tryRegister();
 		bool isRegistered() const;
 		
@@ -132,6 +134,7 @@ class Client
 		std::set<std::string> _channels;  // For JOIN/KICK commands
 		bool         _passwordAccepted;
 		bool         _isRegistered;
+		bool         _capNegotiating;
 };
 
 #endif

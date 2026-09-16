@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   ServerLog.cpp                                      :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/09/17 00:10:38 by apestana          #+#    #+#             */
+/*   Updated: 2026/09/17 00:10:40 by apestana         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "ServerLog.hpp"
 #include "Server.hpp"
 #include <cstdio>
@@ -14,11 +26,9 @@ ServerLog::ServerLog() : _enabled(false), _dropped(false), _size(0)
 
 void ServerLog::initialize()
 {
-	// Disable stdio buffering so fwrite reports bytes actually delivered.
 	// If stdout is unavailable, serving clients does not depend on logging.
 	struct stat destination;
-	_enabled = std::setvbuf(stdout, NULL, _IONBF, 0) == 0
-		&& fstat(STDOUT_FILENO, &destination) == 0;
+	_enabled = fstat(STDOUT_FILENO, &destination) == 0;
 	// O_NONBLOCK has no effect on regular files. Preserve their O_APPEND
 	// flag when the server is started with >> instead of replacing flags.
 	if (_enabled && !S_ISREG(destination.st_mode))
@@ -86,10 +96,16 @@ void ServerLog::flush()
 {
 	if (_size == 0)
 		return;
-	const size_t sent = std::fwrite(_buffer, 1, _size, stdout);
-	// A partial non-blocking write may set the stdio error indicator.
-	std::clearerr(stdout);
-	_size -= sent;
+	// Exactly one write per POLLOUT; a partial result waits for the next poll.
+	const ssize_t sent = write(STDOUT_FILENO, _buffer, _size);
+	if (sent <= 0)
+	{
+		// Best-effort logging: disable a failing sink without errno retries
+		// or a busy loop, while the server keeps serving its clients.
+		_enabled = false;
+		return;
+	}
+	_size -= static_cast<size_t>(sent);
 	std::memmove(_buffer, _buffer + sent, _size);
 	if (_dropped && sizeof(_buffer) - _size >= 512)
 	{
@@ -97,9 +113,6 @@ void ServerLog::flush()
 		append("WARN", "LOGS DROPPED", -1, NULL,
 			"Console queue was full; some diagnostic entries were discarded");
 	}
-	// A permanently failing sink must not turn POLLOUT into a busy loop.
-	if (sent == 0)
-		_enabled = false;
 }
 
 void ServerLog::handlePoll(short events)

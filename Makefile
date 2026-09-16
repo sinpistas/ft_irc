@@ -3,10 +3,10 @@
 #                                                         :::      ::::::::    #
 #    Makefile                                           :+:      :+:    :+:    #
 #                                                     +:+ +:+         +:+      #
-#    By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+         #
+#    By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/08/22 13:50:13 by apestana          #+#    #+#              #
-#    Updated: 2026/09/14 14:48:03 by vbullock         ###   ########.fr        #
+#    Updated: 2026/09/17 00:10:22 by apestana         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -48,6 +48,10 @@ SRC			=	main.cpp \
 				commands/Kick.cpp \
 				commands/Topic.cpp \
 				commands/Mode.cpp \
+				commands/Ping.cpp \
+				commands/Pong.cpp \
+				commands/Who.cpp \
+				commands/Cap.cpp \
 				IrcParameters.cpp \
 				Client.cpp \
 				IrcMessage.cpp \
@@ -81,7 +85,8 @@ clean:
 fclean: clean
 	rm -f $(NAME)
 
-re: fclean all
+re: fclean
+	$(MAKE) all
 
 ##### Dependencies ##########################
 

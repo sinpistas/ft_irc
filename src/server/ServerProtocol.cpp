@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:28:00 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 23:28:07 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 00:10:27 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -29,12 +29,11 @@ void Server::processMessage(Client &client, const IrcMessage &msg)
 		|| !areSameNicknames(msg.prefix, client.getNickname())))
 		return;
 
-	// Registration commands are the only commands accepted before welcome (001).
-	// QUIT is allowed before registration too: a client that gives up half
-	// way through should be able to say so and leave, not be told that it
-	// has not registered.
+	// Registration (including CAP), connection checks and QUIT precede welcome.
+	// PING/PONG expose no user information; WHO still requires registration.
 	if (!client.isRegistered() && msg.command != "PASS" && msg.command != "NICK"
-		&& msg.command != "USER" && msg.command != "QUIT")
+		&& msg.command != "USER" && msg.command != "QUIT"
+		&& msg.command != "PING" && msg.command != "PONG" && msg.command != "CAP")
 	{
 		std::string target;
 
@@ -68,6 +67,14 @@ void Server::processMessage(Client &client, const IrcMessage &msg)
 		handleMode(client, msg);
 	else if (msg.command == "TOPIC")
 		handleTopic(client, msg);
+	else if (msg.command == "PING")
+		handlePing(client, msg);
+	else if (msg.command == "PONG")
+		handlePong(client, msg);
+	else if (msg.command == "WHO")
+		handleWho(client, msg);
+	else if (msg.command == "CAP")
+		handleCap(client, msg);
 	else
 	{
 		// Saying nothing is the worst possible answer: the client cannot

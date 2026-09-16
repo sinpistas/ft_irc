@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 23:32:05 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 00:11:06 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -97,6 +97,13 @@ class Server
 		void handleKick(Client &client, const IrcMessage &msg);
 		void handleTopic(Client &client, const IrcMessage &msg);
 		void handleMode(Client &client, const IrcMessage &msg);
+		void handlePing(Client &client, const IrcMessage &msg);
+		void handlePong(Client &client, const IrcMessage &msg);
+		void handleWho(Client &client, const IrcMessage &msg);
+		void handleCap(Client &client, const IrcMessage &msg);
+		// WHO-only reply, implemented in Who.cpp.
+		void sendWhoReply(const Client &requester, const Client &target,
+			const Channel *channel);
 
 		// NICK-only helpers, implemented in Nick.cpp.
 		bool isValidNickname(const std::string &nickname) const;

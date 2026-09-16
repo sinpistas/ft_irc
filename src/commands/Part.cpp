@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:30:35 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 23:30:37 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 00:10:59 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -30,6 +30,12 @@ void Server::handlePart(Client &client, const IrcMessage &msg)
 		reason = " :" + msg.params[1];
 
 	const std::vector<std::string> channels = IrcParameters::splitOnCommas(msg.params[0]);
+	if (channels.empty())
+	{
+		queueMessage(client.getFd(), std::string(":") + SERVER_NAME
+			+ " 461 " + client.getNickname() + " PART :Not enough parameters");
+		return;
+	}
 	for (std::vector<std::string>::const_iterator it = channels.begin();
 		it != channels.end(); ++it)
 	{

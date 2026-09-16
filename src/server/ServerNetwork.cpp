@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:28:11 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 23:28:17 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 00:10:32 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -75,68 +75,57 @@ void Server::setNonBlocking(int fd)
 
 void Server::acceptNewClients()
 {
-	// Give established clients a turn even during a burst of connections.
-	for (int attempt = 0; attempt < 16; ++attempt)
+	// One accept per listener POLLIN; further connections wait for poll().
+	// The peer address supplies the host part of the client's prefix.
+	struct sockaddr_in address;
+	socklen_t addressLen = sizeof(address);
+	std::memset(&address, 0, sizeof(address));
+
+	int clientFd = accept(_serverFd,
+		reinterpret_cast<struct sockaddr *>(&address), &addressLen);
+	if (clientFd < 0)
 	{
-		// The peer address is needed for the host part of this client's
-		// prefix, and accept() is the only chance to collect it.
-		struct sockaddr_in address;
-		socklen_t addressLen = sizeof(address);
-		std::memset(&address, 0, sizeof(address));
-
-		int clientFd = accept(_serverFd,
-			reinterpret_cast<struct sockaddr *>(&address), &addressLen);
-		if (clientFd < 0)
-		{
-			// No more pending connections; this is the normal way out of the loop.
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				break;
-			// A signal interrupted accept(); try again.
-			if (errno == EINTR)
-				continue;
-			// Any other error must not take the whole server down.
-			logEvent("WARN", "ACCEPT PAUSED", -1, std::strerror(errno));
-			pauseAccepting();
-			break;
-		}
-
-		try
-		{
-			setNonBlocking(clientFd);
-
-			// Keep the accepted fd private until both containers own their
-			// entries. A failed insertion must not leak a socket or poll slot.
-			char numericHost[INET_ADDRSTRLEN];
-			std::string hostname = "unknown";
-			if (inet_ntop(AF_INET, &address.sin_addr, numericHost, sizeof(numericHost)) != NULL)
-				hostname = numericHost;
-
-			struct pollfd clientPoll;
-			clientPoll.fd = clientFd;
-			clientPoll.events = POLLIN;
-			clientPoll.revents = 0;
-			_clients.insert(std::pair<int, Client>(clientFd, Client(clientFd, hostname)));
-			_pollFds.push_back(clientPoll);
-		}
-		catch (const std::bad_alloc &)
-		{
-			_clients.erase(clientFd);
-			close(clientFd);
-			// Give existing clients their turn instead of draining the
-			// accept queue while no more connections can be stored.
-			logEvent("WARN", "ACCEPT PAUSED", -1, "Not enough memory");
-			pauseAccepting();
-			break;
-		}
-		catch (const std::exception &e)
-		{
-			logEvent("WARN", "CONNECTION REJECTED", clientFd, e.what());
-			close(clientFd);
-			continue;
-		}
-
-		logEvent("INFO", "CONNECTED", clientFd, _clients.find(clientFd)->second.getHostname().c_str());
+		// Apply the same backoff to every failure, including resource
+		// exhaustion. errno is diagnostic only; it never selects a retry.
+		logEvent("WARN", "ACCEPT PAUSED", -1, std::strerror(errno));
+		pauseAccepting();
+		return;
 	}
+
+	try
+	{
+		setNonBlocking(clientFd);
+
+		// Keep the accepted fd private until both containers own their
+		// entries. A failed insertion must not leak a socket or poll slot.
+		char numericHost[INET_ADDRSTRLEN];
+		std::string hostname = "unknown";
+		if (inet_ntop(AF_INET, &address.sin_addr, numericHost, sizeof(numericHost)) != NULL)
+			hostname = numericHost;
+
+		struct pollfd clientPoll;
+		clientPoll.fd = clientFd;
+		clientPoll.events = POLLIN;
+		clientPoll.revents = 0;
+		_clients.insert(std::pair<int, Client>(clientFd, Client(clientFd, hostname)));
+		_pollFds.push_back(clientPoll);
+	}
+	catch (const std::bad_alloc &)
+	{
+		_clients.erase(clientFd);
+		close(clientFd);
+		logEvent("WARN", "ACCEPT PAUSED", -1, "Not enough memory");
+		pauseAccepting();
+		return;
+	}
+	catch (const std::exception &e)
+	{
+		logEvent("WARN", "CONNECTION REJECTED", clientFd, e.what());
+		close(clientFd);
+		return;
+	}
+
+	logEvent("INFO", "CONNECTED", clientFd, _clients.find(clientFd)->second.getHostname().c_str());
 }
 
 void Server::pauseAccepting()

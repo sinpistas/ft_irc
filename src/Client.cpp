@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:49:05 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 20:39:13 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 00:10:24 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -19,7 +19,7 @@ Client::Client(int fd, const std::string &hostname)
 	  _connectedAt(std::time(NULL)), _closingSince(0), _memoryFailure(false),
 	  _discardingLine(false),
 	  _quitReason("Connection closed"),
-	  _passwordAccepted(false), _isRegistered(false)
+	  _passwordAccepted(false), _isRegistered(false), _capNegotiating(false)
 {
 }
 
@@ -214,9 +214,15 @@ bool Client::hasAcceptedPassword() const
 	return _passwordAccepted;
 }
 
+void Client::setCapNegotiating(bool negotiating)
+{
+	_capNegotiating = negotiating;
+}
+
 bool Client::tryRegister()
 {
-	if (_isRegistered || !_passwordAccepted || _nickname.empty() || _username.empty())
+	if (_isRegistered || _capNegotiating || !_passwordAccepted
+		|| _nickname.empty() || _username.empty())
 		return false;
 	_isRegistered = true;
 	return true;
