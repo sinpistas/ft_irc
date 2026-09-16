@@ -92,20 +92,6 @@ Use `-` to remove modes: for example, `MODE #test -k secret`, `MODE #test -o bob
 
 Under `+i`, INVITE requires operator status; under `-i`, ordinary members may invite. Under `+t`, only operators may change TOPIC; under `-t`, ordinary members may do so. Enable these modes before testing the corresponding permission errors. Mode `n` is outside the implemented scope, so channel PRIVMSG does not require the sender to be a member.
 
-### Tests
-
-Python 3 is required for the automated suites; OpenBSD netcat is needed for the netcat integration case. Tests start their own servers on temporary ports and use their own password.
-
-```sh
-make
-python3 tests/test_evaluation.py ./ircserv
-python3 tests/test_cap.py ./ircserv
-```
-
-These run 24 and 19 cases respectively, including 12 shared PING/PONG/WHO tests: 31 distinct tests overall. The shared tests can also be run separately with `python3 tests/test_ping_pong_who.py ./ircserv`.
-
-The earlier [evaluation report](docs/EVALUATION_REPORT.md) records additional actual HexChat sessions, terminal Ctrl+Z/fg tests, flood tests, allocation failure injection, sanitizer checks, Valgrind results, and findings from that review. Those additional audit harnesses are not part of the two permanent suites above.
-
 ## Structure and limits
 
 | Location | Responsibility |
