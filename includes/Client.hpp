@@ -111,13 +111,6 @@ class Client
 		void clearChannels();
 		bool isInChannel(const std::string &channel) const;
 		
-		// Modes (for MODE command)
-		void setModes(const std::string &modes);  // Set user modes (e.g., "io")
-		const std::string &getModes() const;
-		void addMode(char mode);      // Add single mode
-		void removeMode(char mode);   // Remove single mode
-		bool hasMode(char mode) const; // Check if mode is set
-
 	private:
 		Client();
 
@@ -137,7 +130,6 @@ class Client
 		std::string  _realname;           // For USER command
 		std::string  _quitReason;
 		std::set<std::string> _channels;  // For JOIN/KICK commands
-		std::string  _modes;              // For MODE command (e.g., "io" for invisible+operator)
 		bool         _passwordAccepted;
 		bool         _isRegistered;
 };

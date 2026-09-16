@@ -97,32 +97,20 @@ void Server::extractCompleteLines(int fd)
 		IrcMessage msg;
 		if (!IrcMessage::parse(line, msg))
 		{
-			std::cerr << "Failed to parse line from client fd " << fd << ": \"" << line << "\"" << std::endl;
+			logEvent("WARN", "INVALID COMMAND", fd, "Malformed line discarded");
 			continue;
 		}
-		else
-		{
-			processMessage(it->second, msg);
-		}
-
-		std::cout << "Parsed message from fd " << fd
-			<< " -> prefix: \"" << msg.prefix
-			<< "\", command: \"" << msg.command
-			<< "\", params: [";
-		for (size_t i = 0; i < msg.params.size(); ++i)
-		{
-			if (i > 0)
-				std::cout << ", ";
-			std::cout << "\"" << msg.params[i] << "\"";
-		}
-		std::cout << "]" << std::endl;
+		// Log only the command name: parameters may contain passwords,
+		// channel keys, private messages or other personal data.
+		logEvent("CMD", "COMMAND", fd, msg.command.c_str());
+		processMessage(it->second, msg);
 	}
 }
 
 void Server::queueMessage(int fd, const std::string &message, bool truncateText)
 {
 	std::map<int, Client>::iterator it = _clients.find(fd);
-	if (it == _clients.end() || it->second.hasMemoryFailure())
+	if (it == _clients.end() || isMarkedForRemoval(fd))
 		return;
 
 	try
@@ -143,7 +131,7 @@ void Server::queueMessage(int fd, const std::string &message, bool truncateText)
 			if (!truncateText || trailing == std::string::npos
 				|| trailing + 2 >= IRC_MESSAGE_MAX_CONTENT)
 			{
-				std::cerr << "Cannot queue oversized IRC message for fd " << fd << std::endl;
+				logEvent("WARN", "REPLY DISCARDED", fd, "IRC message exceeds length limit");
 				return;
 			}
 			line.erase(IRC_MESSAGE_MAX_CONTENT);
@@ -157,8 +145,7 @@ void Server::queueMessage(int fd, const std::string &message, bool truncateText)
 		{
 			if (!isMarkedForRemoval(fd))
 			{
-				std::cerr << "Output queue full for client fd " << fd
-					<< ", dropping the connection" << std::endl;
+				logEvent("WARN", "OUTPUT QUEUE FULL", fd, "Closing slow reader");
 				// Its channels are told why it vanished; the client itself is
 				// past being told anything, since it is not reading.
 				it->second.setQuitReason("Output queue exceeded");
@@ -180,6 +167,11 @@ void Server::queueMessage(int fd, const std::string &message, bool truncateText)
 
 void Server::sendWelcome(const Client &client)
 {
+	logEvent("INFO", "REGISTERED", client.getFd());
 	queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 001 "
 		+ client.getNickname() + " :Welcome to the ft_irc server " + client.getPrefix());
+	// There is no MOTD configured. This finishes the login sequence for IRC
+	// clients; registration has already succeeded and the connection stays open.
+	queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 422 "
+		+ client.getNickname() + " :MOTD File is missing");
 }

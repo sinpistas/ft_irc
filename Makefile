@@ -17,7 +17,7 @@ NAME		= ircserv
 ##### Compiler and flags ###################
 
 CXX			= c++
-CXXFLAGS	= -Wall -Wextra -std=c++98
+CXXFLAGS	= -Wall -Wextra -Werror -std=c++98
 
 # Generate dependency files automatically
 CPPFLAGS	= -MMD -MP
@@ -33,6 +33,7 @@ OBJDIR		= obj
 SRC			=	main.cpp \
 				server/Server.cpp \
 				server/ServerNetwork.cpp \
+				server/ServerLog.cpp \
 				server/ServerClients.cpp \
 				server/ServerChannels.cpp \
 				server/ServerProtocol.cpp \

@@ -241,11 +241,6 @@ void Client::leaveChannel(const std::string &channel)
 	{
 		_channels.erase(channelName);
 	}
-	else
-		std::cout << "User was not found in channel " << channel << std::endl;
-		//
-		//POSSIBLE ERROR MSG to implement
-		//
 }
 
 bool Client::isInChannel(const std::string &channel) const
@@ -264,32 +259,4 @@ const std::set<std::string> &Client::getChannels() const
 void Client::clearChannels()
 {
 	_channels.clear();
-}
-
-void Client::addMode(char mode)
-{
-    if (_modes.find(mode) == std::string::npos)
-        _modes += mode;
-}
-
-void Client::removeMode(char mode)
-{
-    std::string::size_type pos = _modes.find(mode);
-    if (pos != std::string::npos)
-        _modes.erase(pos, 1);
-}
-
-bool Client::hasMode(char mode) const
-{
-    return _modes.find(mode) != std::string::npos;
-}
-
-void Client::setModes(const std::string &modes)
-{
-	std::cout << "Modes set: " << modes << std::endl;
-
-}
-const std::string &Client::getModes() const
-{
-	return this->_modes;
 }

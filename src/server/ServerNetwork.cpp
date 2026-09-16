@@ -22,6 +22,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cstdio>
 
 void Server::initSocket()
 {
@@ -55,7 +56,9 @@ void Server::initSocket()
 	if (listen(_serverFd, SOMAXCONN) < 0)
 		throw std::runtime_error(std::string("listen: ") + std::strerror(errno));
 
-	std::cout << "Server listening on port " << _port << std::endl;
+	char detail[64];
+	std::sprintf(detail, "Listening on 0.0.0.0:%d", _port);
+	logEvent("INFO", "SERVER READY", -1, detail);
 }
 
 void Server::setNonBlocking(int fd)
@@ -72,7 +75,8 @@ void Server::setNonBlocking(int fd)
 
 void Server::acceptNewClients()
 {
-	while (true)
+	// Give established clients a turn even during a burst of connections.
+	for (int attempt = 0; attempt < 16; ++attempt)
 	{
 		// The peer address is needed for the host part of this client's
 		// prefix, and accept() is the only chance to collect it.
@@ -91,7 +95,8 @@ void Server::acceptNewClients()
 			if (errno == EINTR)
 				continue;
 			// Any other error must not take the whole server down.
-			std::cerr << "accept: " << std::strerror(errno) << std::endl;
+			logEvent("WARN", "ACCEPT PAUSED", -1, std::strerror(errno));
+			pauseAccepting();
 			break;
 		}
 
@@ -119,17 +124,27 @@ void Server::acceptNewClients()
 			close(clientFd);
 			// Give existing clients their turn instead of draining the
 			// accept queue while no more connections can be stored.
+			logEvent("WARN", "ACCEPT PAUSED", -1, "Not enough memory");
+			pauseAccepting();
 			break;
 		}
 		catch (const std::exception &e)
 		{
-			std::cerr << e.what() << std::endl;
+			logEvent("WARN", "CONNECTION REJECTED", clientFd, e.what());
 			close(clientFd);
 			continue;
 		}
 
-		std::cout << "Accepted new client, fd " << clientFd << std::endl;
+		logEvent("INFO", "CONNECTED", clientFd, _clients.find(clientFd)->second.getHostname().c_str());
 	}
+}
+
+void Server::pauseAccepting()
+{
+	// EMFILE/ENFILE leave connections pending: polling POLLIN again would
+	// immediately wake us up. Retry after the next deadline instead.
+	_acceptRetryAt = std::time(NULL) + 1;
+	_pollFds[0].events = 0;
 }
 
 bool Server::receiveFromClient(int fd)
@@ -144,17 +159,15 @@ bool Server::receiveFromClient(int fd)
 		if (it != _clients.end())
 			it->second.appendToBuffer(buffer, static_cast<size_t>(bytes));
 
-		std::cout << "Received " << bytes << " bytes from client fd " << fd
-			<< ": " << std::string(buffer, static_cast<size_t>(bytes)) << std::endl;
 		return true;
 	}
 
 	// The subject forbids using errno after recv(): EOF or an error removes
 	// this client without retrying the operation or stopping the server.
 	if (bytes == 0)
-		std::cout << "Client fd " << fd << " closed the connection" << std::endl;
+		logEvent("INFO", "PEER CLOSED", fd);
 	else
-		std::cerr << "recv failed for client fd " << fd << std::endl;
+		logEvent("WARN", "RECEIVE FAILED", fd);
 	return false;
 }
 
@@ -173,7 +186,7 @@ bool Server::sendToClient(int fd)
 		// Decide from the return value only, as required by the subject.
 		if (sent <= 0)
 		{
-			std::cerr << "send failed for client fd " << fd << std::endl;
+			logEvent("WARN", "SEND FAILED", fd, "Closing connection");
 			return false;
 		}
 		it->second.consumeSendBuffer(static_cast<size_t>(sent));

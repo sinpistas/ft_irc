@@ -32,7 +32,7 @@ static void requestStop(int)
 }
 
 Server::Server(int port, const std::string &password)
-	: _port(port), _password(password), _serverFd(-1)
+	: _port(port), _password(password), _serverFd(-1), _acceptRetryAt(0)
 {
 }
 
@@ -87,6 +87,7 @@ void Server::run()
 {
 	ignoreSigpipe();
 	catchShutdownSignals();
+	_logger.initialize();
 	initSocket();
 	pollLoop();
 }
@@ -102,18 +103,33 @@ void Server::pollLoop()
 	// can be handled through the same poll() loop.
 	_pollFds.push_back(serverPoll);
 
-	std::cout << "Waiting for activity on the server socket..." << std::endl;
+	// Slots 0 and 1 remain reserved for the listener and console.
+	struct pollfd logPoll;
+	logPoll.fd = _logger.getFd();
+	logPoll.events = 0;
+	logPoll.revents = 0;
+	_pollFds.push_back(logPoll);
 
-	while (!g_stopRequested)
+	while (true)
 	{
+		const bool stopping = g_stopRequested != 0;
+		if (stopping)
+			logEvent("INFO", "SERVER STOPPING");
+		if (_acceptRetryAt != 0 && std::time(NULL) >= _acceptRetryAt)
+		{
+			_acceptRetryAt = 0;
+			_pollFds[0].events = POLLIN;
+		}
+		_pollFds[1].fd = _logger.getFd();
+		_pollFds[1].events = _logger.hasPending() ? POLLOUT : 0;
 		// Wait for one of the monitored descriptors to have an event, or for
 		// the timeout to come round so the registration and closing deadlines
 		// get looked at.
-		int ready = poll(&_pollFds[0], _pollFds.size(), POLL_TIMEOUT_MS);
+		int ready = poll(&_pollFds[0], _pollFds.size(), stopping ? 0 : POLL_TIMEOUT_MS);
 		if (ready < 0)
 		{
 			// A signal interrupted poll(). If it was one asking the server to
-			// stop, the loop condition is about to see it; anything else just
+			// stop, the next iteration is about to see it; anything else just
 			// means going round again.
 			if (errno == EINTR)
 				continue;
@@ -135,6 +151,13 @@ void Server::pollLoop()
 				continue;
 
 			int fd = _pollFds[i].fd;
+			if (i == 1)
+			{
+				_logger.handlePoll(revents);
+				continue;
+			}
+			if (stopping)
+				continue;
 
 			if (fd == _serverFd)
 			{
@@ -149,8 +172,10 @@ void Server::pollLoop()
 				// do with it is push out the reply that says why.
 				if (isMarkedForRemoval(fd))
 				{
-					if (revents & POLLOUT)
-						sendToClient(fd);
+					if (revents & (POLLERR | POLLHUP | POLLNVAL))
+						abortConnection(fd);
+					else if ((revents & POLLOUT) && !sendToClient(fd))
+						abortConnection(fd);
 					continue;
 				}
 
@@ -169,10 +194,15 @@ void Server::pollLoop()
 				// handler decided to close it; no point writing to a connection we
 				// already know is gone, or that is about to be.
 				if (stillConnected && !isMarkedForRemoval(fd) && (revents & POLLOUT))
-					stillConnected = sendToClient(fd);
+				{
+					if (!sendToClient(fd))
+						abortConnection(fd);
+				}
 
-				if (!stillConnected || (revents & (POLLERR | POLLNVAL))
+				if ((revents & (POLLERR | POLLNVAL))
 					|| ((revents & POLLHUP) && !(revents & POLLIN)))
+					abortConnection(fd);
+				else if (!stillConnected)
 					markForRemoval(fd);
 			}
 			catch (const std::bad_alloc &)
@@ -183,13 +213,14 @@ void Server::pollLoop()
 			}
 		}
 
+		// One non-blocking poll pass to flush shutdown diagnostics; never
+		// wait for a console reader before exiting.
+		if (stopping)
+			break;
 		disconnectStaleClients();
 
 		// The single point where clients are erased: removeClient() modifies
 		// _clients and _pollFds, which the loop above is still indexing.
 		removePendingClients();
 	}
-
-	std::cout << "Shutting down, closing " << _clients.size()
-		<< " connection(s)" << std::endl;
 }

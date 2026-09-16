@@ -21,6 +21,7 @@
 #include "Client.hpp"
 #include "Channel.hpp"
 #include "IrcMessage.hpp"
+#include "ServerLog.hpp"
 
 // Own the connections and channels; definitions are grouped by responsibility
 // in src/server, with each IRC command implemented in src/commands.
@@ -40,11 +41,14 @@ class Server
 		void ignoreSigpipe();
 		void catchShutdownSignals();
 		void pollLoop();
+		void logEvent(const char *level, const char *event, int fd = -1,
+			const char *detail = NULL);
 
 		// Socket setup and non-blocking I/O (ServerNetwork.cpp).
 		void initSocket();
 		void setNonBlocking(int fd);
 		void acceptNewClients();
+		void pauseAccepting();
 		// Read/write once after the corresponding poll event. False means
 		// the connection must be removed; partial output remains queued.
 		bool receiveFromClient(int fd);
@@ -56,6 +60,7 @@ class Server
 		// Handlers mark instead of erasing: command dispatch and poll still
 		// hold iterators. Marking must not allocate, including on bad_alloc.
 		void markForRemoval(int fd);
+		void abortConnection(int fd);
 		bool isMarkedForRemoval(int fd) const;
 		void handleMemoryFailure(int fd);
 		// Called after the poll iteration, when erasing clients is safe.
@@ -106,6 +111,8 @@ class Server
 		int _port;
 		std::string _password;
 		int _serverFd;
+		std::time_t _acceptRetryAt;
+		ServerLog _logger;
 		std::vector<struct pollfd> _pollFds;
 		// Closing state is stored in Client, so marking never allocates.
 		std::map<int, Client> _clients;

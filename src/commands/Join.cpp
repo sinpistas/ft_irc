@@ -144,8 +144,7 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 		if (created)
 			channel->second.addOperator(client.getFd());
 
-		std::cout << client.getNickname() << " joined "
-			<< channelName << " channel." << std::endl;
+		logEvent("INFO", "JOINED CHANNEL", client.getFd(), channelName.c_str());
 
 		const std::string notification = ":" + client.getPrefix() + " JOIN :" + channelName;
 		const std::set<int> &members = channel->second.getMembers();

@@ -55,11 +55,24 @@ bool Server::isMarkedForRemoval(int fd) const
 	return it != _clients.end() && it->second.getClosingTime() != 0;
 }
 
+void Server::abortConnection(int fd)
+{
+	std::map<int, Client>::iterator it = _clients.find(fd);
+	if (it == _clients.end())
+		return;
+	// A failed transport cannot deliver a closing reply. Drop its queue so
+	// removal happens this pass, without another send or a two-second wait.
+	it->second.consumeSendBuffer(it->second.getSendBuffer().size());
+	markForRemoval(fd);
+	updateClientPollEvents(fd);
+}
+
 void Server::handleMemoryFailure(int fd)
 {
 	std::map<int, Client>::iterator it = _clients.find(fd);
 	if (it == _clients.end())
 		return;
+	logEvent("WARN", "MEMORY EXHAUSTED", fd, "Closing connection");
 	it->second.failForMemory();
 	updateClientPollEvents(fd);
 }
@@ -145,10 +158,9 @@ void Server::removeClient(int fd)
 		}
 	}
 
+	logEvent("INFO", "DISCONNECTED", fd);
 	_clients.erase(fd);
 	close(fd);
-
-	std::cout << "Removed client fd " << fd << std::endl;
 }
 
 void Server::disconnectStaleClients()
