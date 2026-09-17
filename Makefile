@@ -6,7 +6,7 @@
 #    By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2026/08/22 13:50:13 by apestana          #+#    #+#              #
-#    Updated: 2026/09/17 00:10:22 by apestana         ###   ########.fr        #
+#    Updated: 2026/09/17 14:07:18 by apestana         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -33,7 +33,6 @@ OBJDIR		= obj
 SRC			=	main.cpp \
 				server/Server.cpp \
 				server/ServerNetwork.cpp \
-				server/ServerLog.cpp \
 				server/ServerClients.cpp \
 				server/ServerChannels.cpp \
 				server/ServerProtocol.cpp \

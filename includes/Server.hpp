@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/08/27 23:16:28 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/17 00:11:06 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 14:07:34 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -21,7 +21,6 @@
 #include "Client.hpp"
 #include "Channel.hpp"
 #include "IrcMessage.hpp"
-#include "ServerLog.hpp"
 
 // Own the connections and channels; definitions are grouped by responsibility
 // in src/server, with each IRC command implemented in src/commands.
@@ -41,8 +40,6 @@ class Server
 		void ignoreSigpipe();
 		void catchShutdownSignals();
 		void pollLoop();
-		void logEvent(const char *level, const char *event, int fd = -1,
-			const char *detail = NULL);
 
 		// Socket setup and non-blocking I/O (ServerNetwork.cpp).
 		void initSocket();
@@ -119,7 +116,6 @@ class Server
 		std::string _password;
 		int _serverFd;
 		std::time_t _acceptRetryAt;
-		ServerLog _logger;
 		std::vector<struct pollfd> _pollFds;
 		// Closing state is stored in Client, so marking never allocates.
 		std::map<int, Client> _clients;

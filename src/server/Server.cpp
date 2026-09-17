@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:28:49 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/16 01:14:18 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 14:07:25 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -87,7 +87,6 @@ void Server::run()
 {
 	ignoreSigpipe();
 	catchShutdownSignals();
-	_logger.initialize();
 	initSocket();
 	pollLoop();
 }
@@ -103,29 +102,17 @@ void Server::pollLoop()
 	// can be handled through the same poll() loop.
 	_pollFds.push_back(serverPoll);
 
-	// Slots 0 and 1 remain reserved for the listener and console.
-	struct pollfd logPoll;
-	logPoll.fd = _logger.getFd();
-	logPoll.events = 0;
-	logPoll.revents = 0;
-	_pollFds.push_back(logPoll);
-
-	while (true)
+	while (!g_stopRequested)
 	{
-		const bool stopping = g_stopRequested != 0;
-		if (stopping)
-			logEvent("INFO", "SERVER STOPPING");
 		if (_acceptRetryAt != 0 && std::time(NULL) >= _acceptRetryAt)
 		{
 			_acceptRetryAt = 0;
 			_pollFds[0].events = POLLIN;
 		}
-		_pollFds[1].fd = _logger.getFd();
-		_pollFds[1].events = _logger.hasPending() ? POLLOUT : 0;
 		// Wait for one of the monitored descriptors to have an event, or for
 		// the timeout to come round so the registration and closing deadlines
 		// get looked at.
-		int ready = poll(&_pollFds[0], _pollFds.size(), stopping ? 0 : POLL_TIMEOUT_MS);
+		int ready = poll(&_pollFds[0], _pollFds.size(), POLL_TIMEOUT_MS);
 		if (ready < 0)
 		{
 			// A signal interrupted poll(). If it was one asking the server to
@@ -151,14 +138,6 @@ void Server::pollLoop()
 				continue;
 
 			int fd = _pollFds[i].fd;
-			if (i == 1)
-			{
-				_logger.handlePoll(revents);
-				continue;
-			}
-			if (stopping)
-				continue;
-
 			if (fd == _serverFd)
 			{
 				if (revents & POLLIN)
@@ -213,10 +192,6 @@ void Server::pollLoop()
 			}
 		}
 
-		// One non-blocking poll pass to flush shutdown diagnostics; never
-		// wait for a console reader before exiting.
-		if (stopping)
-			break;
 		disconnectStaleClients();
 
 		// The single point where clients are erased: removeClient() modifies

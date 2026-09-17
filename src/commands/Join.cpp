@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   Join.cpp                                           :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: vbullock <vbullock@student.42.fr>          +#+  +:+       +#+        */
+/*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:31:11 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/15 17:29:54 by vbullock         ###   ########.fr       */
+/*   Updated: 2026/09/17 14:07:32 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -144,7 +144,6 @@ void Server::handleJoin(Client &client, const IrcMessage &msg)
 		if (created)
 			channel->second.addOperator(client.getFd());
 
-		logEvent("INFO", "JOINED CHANNEL", client.getFd(), channelName.c_str());
 
 		const std::string notification = ":" + client.getPrefix() + " JOIN :" + channelName;
 		const std::set<int> &members = channel->second.getMembers();

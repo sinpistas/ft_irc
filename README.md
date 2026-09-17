@@ -97,7 +97,7 @@ Under `+i`, INVITE requires operator status; under `-i`, ordinary members may in
 | Location | Responsibility |
 | --- | --- |
 | `src/main.cpp` | Validate startup arguments and start the server |
-| `src/server/` | Event loop, socket I/O, logging, registration, message dispatch and shared client/channel operations |
+| `src/server/` | Event loop, socket I/O, registration, message dispatch and shared client/channel operations |
 | `src/commands/` | One implementation file per IRC command |
 | `src/Client.cpp` | Client identity, state and input/output buffers |
 | `src/Channel.cpp` | Membership, operators, invitations, topic and channel modes |
@@ -106,7 +106,7 @@ Under `+i`, INVITE requires operator status; under `-i`, ordinary members may in
 
 IRC frames are limited to 512 bytes including CRLF, with at most 15 parameters. A trailing parameter introduced with `:` may contain more than 15 words. Nicknames are limited to nine characters and usernames to 32. Supported channel prefixes are `#` and `&`; names and nicknames use IRC case mapping, while passwords and channel keys are case-sensitive.
 
-Registration, including CAP negotiation, has a 60-second deadline. Each client's application output queue is limited to 64 KiB: an excessively slow reader is disconnected to protect the other clients. A suspended client can recover queued data when resumed, provided it has not exceeded this limit. Diagnostic logs also have a bounded queue and may be discarded under load.
+Registration, including CAP negotiation, has a 60-second deadline. Each client's application output queue is limited to 64 KiB: an excessively slow reader is disconnected to protect the other clients. A suspended client can recover queued data when resumed, provided it has not exceeded this limit.
 
 TLS, SASL, server-to-server links and channel modes beyond `i`, `t`, `k`, `o`, `l` are not implemented.
 

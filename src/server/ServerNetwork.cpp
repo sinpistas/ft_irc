@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:28:11 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/17 00:10:32 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 14:07:23 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -22,7 +22,6 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <cstdio>
 
 void Server::initSocket()
 {
@@ -55,10 +54,6 @@ void Server::initSocket()
 	// 4-Start listening and allow the system to queue pending connections.
 	if (listen(_serverFd, SOMAXCONN) < 0)
 		throw std::runtime_error(std::string("listen: ") + std::strerror(errno));
-
-	char detail[64];
-	std::sprintf(detail, "Listening on 0.0.0.0:%d", _port);
-	logEvent("INFO", "SERVER READY", -1, detail);
 }
 
 void Server::setNonBlocking(int fd)
@@ -86,8 +81,7 @@ void Server::acceptNewClients()
 	if (clientFd < 0)
 	{
 		// Apply the same backoff to every failure, including resource
-		// exhaustion. errno is diagnostic only; it never selects a retry.
-		logEvent("WARN", "ACCEPT PAUSED", -1, std::strerror(errno));
+		// exhaustion, without using errno to select a retry.
 		pauseAccepting();
 		return;
 	}
@@ -114,18 +108,14 @@ void Server::acceptNewClients()
 	{
 		_clients.erase(clientFd);
 		close(clientFd);
-		logEvent("WARN", "ACCEPT PAUSED", -1, "Not enough memory");
 		pauseAccepting();
 		return;
 	}
-	catch (const std::exception &e)
+	catch (const std::exception &)
 	{
-		logEvent("WARN", "CONNECTION REJECTED", clientFd, e.what());
 		close(clientFd);
 		return;
 	}
-
-	logEvent("INFO", "CONNECTED", clientFd, _clients.find(clientFd)->second.getHostname().c_str());
 }
 
 void Server::pauseAccepting()
@@ -153,10 +143,6 @@ bool Server::receiveFromClient(int fd)
 
 	// The subject forbids using errno after recv(): EOF or an error removes
 	// this client without retrying the operation or stopping the server.
-	if (bytes == 0)
-		logEvent("INFO", "PEER CLOSED", fd);
-	else
-		logEvent("WARN", "RECEIVE FAILED", fd);
 	return false;
 }
 
@@ -174,10 +160,7 @@ bool Server::sendToClient(int fd)
 
 		// Decide from the return value only, as required by the subject.
 		if (sent <= 0)
-		{
-			logEvent("WARN", "SEND FAILED", fd, "Closing connection");
 			return false;
-		}
 		it->second.consumeSendBuffer(static_cast<size_t>(sent));
 	}
 

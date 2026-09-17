@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:28:27 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/13 23:28:31 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 14:07:22 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -72,7 +72,6 @@ void Server::handleMemoryFailure(int fd)
 	std::map<int, Client>::iterator it = _clients.find(fd);
 	if (it == _clients.end())
 		return;
-	logEvent("WARN", "MEMORY EXHAUSTED", fd, "Closing connection");
 	it->second.failForMemory();
 	updateClientPollEvents(fd);
 }
@@ -158,7 +157,6 @@ void Server::removeClient(int fd)
 		}
 	}
 
-	logEvent("INFO", "DISCONNECTED", fd);
 	_clients.erase(fd);
 	close(fd);
 }

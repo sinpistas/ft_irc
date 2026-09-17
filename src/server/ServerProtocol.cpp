@@ -6,7 +6,7 @@
 /*   By: apestana <apestana@student.42malaga.com    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/09/13 23:28:00 by apestana          #+#    #+#             */
-/*   Updated: 2026/09/17 00:10:27 by apestana         ###   ########.fr       */
+/*   Updated: 2026/09/17 14:07:24 by apestana         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -103,13 +103,7 @@ void Server::extractCompleteLines(int fd)
 		// A syntax error only discards this one line, the client stays connected.
 		IrcMessage msg;
 		if (!IrcMessage::parse(line, msg))
-		{
-			logEvent("WARN", "INVALID COMMAND", fd, "Malformed line discarded");
 			continue;
-		}
-		// Log only the command name: parameters may contain passwords,
-		// channel keys, private messages or other personal data.
-		logEvent("CMD", "COMMAND", fd, msg.command.c_str());
 		processMessage(it->second, msg);
 	}
 }
@@ -137,10 +131,7 @@ void Server::queueMessage(int fd, const std::string &message, bool truncateText)
 			const std::string::size_type trailing = line.find(" :");
 			if (!truncateText || trailing == std::string::npos
 				|| trailing + 2 >= IRC_MESSAGE_MAX_CONTENT)
-			{
-				logEvent("WARN", "REPLY DISCARDED", fd, "IRC message exceeds length limit");
 				return;
-			}
 			line.erase(IRC_MESSAGE_MAX_CONTENT);
 		}
 
@@ -152,7 +143,6 @@ void Server::queueMessage(int fd, const std::string &message, bool truncateText)
 		{
 			if (!isMarkedForRemoval(fd))
 			{
-				logEvent("WARN", "OUTPUT QUEUE FULL", fd, "Closing slow reader");
 				// Its channels are told why it vanished; the client itself is
 				// past being told anything, since it is not reading.
 				it->second.setQuitReason("Output queue exceeded");
@@ -174,7 +164,6 @@ void Server::queueMessage(int fd, const std::string &message, bool truncateText)
 
 void Server::sendWelcome(const Client &client)
 {
-	logEvent("INFO", "REGISTERED", client.getFd());
 	queueMessage(client.getFd(), std::string(":") + SERVER_NAME + " 001 "
 		+ client.getNickname() + " :Welcome to the ft_irc server " + client.getPrefix());
 	// There is no MOTD configured. This finishes the login sequence for IRC
